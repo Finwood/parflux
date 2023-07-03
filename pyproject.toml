@@ -1,0 +1,27 @@
+[tool.poetry]
+name = "influxdb-parquet"
+version = "0.1.0"
+description = ""
+authors = ["Lasse Fröhner <lasse@starcopter.com>"]
+license = "MIT"
+readme = "README.md"
+packages = [{include = "influxdb_parquet"}]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+influxdb-client = "^1.36.1"
+pyarrow = "^12.0.1"
+typer = "^0.9.0"
+pandas = "^2.0.3"
+duckdb = "^0.8.1"
+
+
+[tool.poetry.group.dev.dependencies]
+black = "^23.3.0"
+isort = "^5.12.0"
+pylint = "^2.17.4"
+python-dotenv = "^1.0.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
