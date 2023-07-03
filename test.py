@@ -154,14 +154,15 @@ def test_raw(db: InfluxDBClient, bucket: Bucket | str, measurement: str) -> None
                 stop: {STOP.isoformat(timespec="seconds")}
             )
             |> filter(fn: (r) => r._measurement == "{measurement}")
-            |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+            |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")
+            |> drop(columns: ["_start", "_stop"])
         """
     )
     _dialect = influxdb_client.Dialect(
         header=True,
         delimiter=",",
         comment_prefix="#",
-        annotations=[],  # ["datatype", "group", "default"]
+        annotations=[],
         date_time_format="RFC3339",
     )
 
