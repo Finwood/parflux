@@ -1,6 +1,41 @@
+# Byte-compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+
+# Secrets
 .env
 *.env
 
+# Data
 *.csv
 *.parquet
 *.db
+
+# Logs
+*.log
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.pytest_cache/
+cover/
+report.xml
+codeclimate.json
+
+# mypy
+.mypy_cache/
+.mypy_stubs/
+mypy.(txt|xml)

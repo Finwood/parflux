@@ -1,11 +1,11 @@
 [tool.poetry]
-name = "influxdb-parquet"
+name = "parflux"
 version = "0.1.0"
 description = ""
 authors = ["Lasse Fröhner <lasse@starcopter.com>"]
 license = "MIT"
 readme = "README.md"
-packages = [{include = "influxdb_parquet"}]
+packages = [{include = "parflux"}]
 
 [tool.poetry.dependencies]
 python = "^3.10"
