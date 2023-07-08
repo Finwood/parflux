@@ -6,7 +6,7 @@ import textwrap
 from datetime import datetime, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import TYPE_CHECKING, Generator, Optional
+from typing import TYPE_CHECKING, Generator, Literal, Optional
 
 import duckdb
 import influxdb_client
@@ -125,13 +125,38 @@ def query(db: InfluxDBClient, query: str, dest_file: Path):
             shutil.copyfileobj(response, fobj)
 
         if raw_file.exists() and raw_file.stat().st_size > 2:
-            log.debug(f"query result stored in {raw_file} ({raw_file.stat().st_size/1024**2:.0f} MiB)")
+            rsize_MiB = raw_file.stat().st_size / 1024**2
+            log.debug(f"query result stored in {raw_file} ({rsize_MiB:.0f} MiB)")
 
-            # TODO: think about a named FIFO and decoupled (background) csplit to save disk/buffer space
-            list_of_csvs = _split_raw_influxdb_response(raw_file, keep=False)
-            _parse_influxdb_csv_files(list_of_csvs, dest_file)
+            with duckdb.connect() as con:
+                table_name = load_raw_query(con, raw_file)
+
+                # TODO: S3?
+                dest_file.parent.mkdir(exist_ok=True, parents=True)
+                query_str = f"copy (select * from \"{table_name}\" order by _time) to '{dest_file}'"
+                log.debug(query_str)
+                con.sql(query_str)
+
+            psize_MiB = dest_file.stat().st_size / 1024**2
+            log.info(f"query result stored in {dest_file} ({psize_MiB:.0f} MiB)")
+
         else:
             log.info(f"Query did not return any result")
+
+
+def load_raw_query(
+    con: duckdb.DuckDBPyConnection, raw_file: Path, table_name: Optional[str] = None, keep: bool = False
+) -> str:
+    if table_name is None:
+        table_name = raw_file.stem
+
+    list_of_csvs = _split_raw_influxdb_response(raw_file, keep)
+
+    csv_tables = [f.stem for f in list_of_csvs]
+    for file, tn in zip(list_of_csvs, csv_tables):
+        load_annotated_csv(con, file, tn)
+
+    return union_tables(con, csv_tables, table_name)
 
 
 def _split_raw_influxdb_response(file: Path, keep: bool = False) -> list[Path]:
@@ -168,33 +193,9 @@ def _split_raw_influxdb_response(file: Path, keep: bool = False) -> list[Path]:
     return csv_files
 
 
-def _parse_influxdb_csv_files(source_csv_files: "Sequence[Path]", dest_parquet_file: Path):
-    with duckdb.connect() as con:
-        table_names = [f.stem for f in source_csv_files]
-        for file, tn in zip(source_csv_files, table_names):
-            load_annotated_csv(con, file, tn)
-
-        union_name = dest_parquet_file.stem
-
-        query_str = f'create view "{union_name}" as ' + " union by name ".join(
-            f'(select * from "{tn}")' for tn in sorted(table_names)
-        )
-        log.debug(query_str)
-        con.sql(query_str)
-
-        # TODO: S3
-        dest_parquet_file.parent.mkdir(exist_ok=True, parents=True)
-        query_str = f"copy (select * from \"{union_name}\" order by _time) to '{dest_parquet_file}'"
-        log.debug(query_str)
-        con.sql(query_str)
-
-    psize_MiB = dest_parquet_file.stat().st_size / 1024**2
-    log.debug(f"{len(source_csv_files)} CSV files combined into {dest_parquet_file} ({psize_MiB:.0f} MiB)")
-
-
 def load_annotated_csv(
-    con: duckdb.DuckDBPyConnection, csv_file: Path, table_name: Optional[str] = None
-) -> duckdb.DuckDBPyRelation:
+    con: duckdb.DuckDBPyConnection, csv_file: Path, table_name: Optional[str] = None, keep: bool = False
+) -> str:
     if not table_name:
         table_name = csv_file.stem
     dtypes = get_influx_csv_schema(csv_file)
@@ -216,5 +217,29 @@ def load_annotated_csv(
     table.create(table_name)
     csize_MiB = csv_file.stat().st_size / 1024**2
     log.debug(f'table "{table_name}" created from {csv_file} ({csize_MiB:5.1f} MiB)')
+    if not keep:
+        csv_file.unlink()
 
-    return table
+    return table_name
+
+
+def union_tables(
+    con: duckdb.DuckDBPyConnection,
+    tables: "Sequence[str]",
+    target_table_name: str,
+    kind: Literal["table", "view"] = "view",
+    keep: bool = False,
+) -> str:
+    if kind.lower() not in {"table", "view"}:
+        raise ValueError(f"only table or view allowed, got {kind}")
+    query_str = f'create {kind} "{target_table_name}" as ' + " union by name ".join(
+        f'(select * from "{tn}")' for tn in tables
+    )
+    log.debug(query_str)
+    con.sql(query_str)
+
+    if kind == "table" and not keep:
+        for table in tables:
+            con.sql(f'drop table "{table}"')
+
+    return target_table_name
