@@ -212,7 +212,7 @@ def load_annotated_csv(
             raise TypeError(f"CSV type '{err_type}' not supported for column {', '.join(error_columns)}")
 
     table = con.read_csv(csv_file, header=True, skiprows=1, dtype=duckdb_types).project(
-        ", ".join(f'"{col}"' for col in columns if col not in ["result"])
+        ", ".join(f'"{col}"' for col in columns if col not in ["result", "table"])
     )
     table.create(table_name)
     csize_MiB = csv_file.stat().st_size / 1024**2
