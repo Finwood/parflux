@@ -6,7 +6,7 @@ import textwrap
 from datetime import datetime, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import TYPE_CHECKING, Generator
+from typing import TYPE_CHECKING, Generator, Optional
 
 import duckdb
 import influxdb_client
@@ -168,35 +168,13 @@ def _split_raw_influxdb_response(file: Path, keep: bool = False) -> list[Path]:
     return csv_files
 
 
-def _parse_influxdb_csv_files(csv_source: "Sequence[Path]", parquet_dest: Path):
+def _parse_influxdb_csv_files(source_csv_files: "Sequence[Path]", dest_parquet_file: Path):
     with duckdb.connect() as con:
-        for file in csv_source:
-            dtypes = get_influx_csv_schema(file)
-            duckdb_types = {k: v for k, (_, v) in dtypes.items()}
-            columns = dtypes.keys()
-            binary_columns = {key for key, (value, _) in dtypes.items() if value == "base64Binary"}
-            if binary_columns:
-                log.error(
-                    f"columns {binary_columns} in {file} have 'base64Binary' type, "
-                    f"which is not supported at the moment. Skipping."
-                )
-                continue
-            numeric_timestamp_columns = {key for key, (value, _) in dtypes.items() if value == "dateTime:number"}
-            if numeric_timestamp_columns:
-                log.error(
-                    f"columns {numeric_timestamp_columns} in {file} have 'dateTime:number' type, "
-                    f"which is not supported at the moment. Skipping."
-                )
-                continue
+        table_names = [f.stem for f in source_csv_files]
+        for file, tn in zip(source_csv_files, table_names):
+            load_annotated_csv(con, file, tn)
 
-            (
-                con.read_csv(file, header=True, skiprows=1, dtype=duckdb_types)
-                .project(", ".join(f'"{col}"' for col in columns if col not in ["result"]))
-                .create(table_name=file.stem)
-            )
-
-        table_names = {f.stem for f in csv_source}
-        union_name = parquet_dest.stem
+        union_name = dest_parquet_file.stem
 
         query_str = f'create view "{union_name}" as ' + " union by name ".join(
             f'(select * from "{tn}")' for tn in sorted(table_names)
@@ -205,11 +183,38 @@ def _parse_influxdb_csv_files(csv_source: "Sequence[Path]", parquet_dest: Path):
         con.sql(query_str)
 
         # TODO: S3
-        parquet_dest.parent.mkdir(exist_ok=True, parents=True)
-        query_str = f"copy (select * from \"{union_name}\" order by _time) to '{parquet_dest}'"
+        dest_parquet_file.parent.mkdir(exist_ok=True, parents=True)
+        query_str = f"copy (select * from \"{union_name}\" order by _time) to '{dest_parquet_file}'"
         log.debug(query_str)
         con.sql(query_str)
 
-    log.debug(
-        f"{len(csv_source)} CSV files combined into {parquet_dest} ({parquet_dest.stat().st_size/1024**2:.0f} MiB)"
+    psize_MiB = dest_parquet_file.stat().st_size / 1024**2
+    log.debug(f"{len(source_csv_files)} CSV files combined into {dest_parquet_file} ({psize_MiB:.0f} MiB)")
+
+
+def load_annotated_csv(
+    con: duckdb.DuckDBPyConnection, csv_file: Path, table_name: Optional[str] = None
+) -> duckdb.DuckDBPyRelation:
+    if not table_name:
+        table_name = csv_file.stem
+    dtypes = get_influx_csv_schema(csv_file)
+    duckdb_types = {k: v for k, (_, v) in dtypes.items()}
+    columns = dtypes.keys()
+
+    for err_type in "base64Binary", "dateTime:number":
+        error_columns = {key for key, (value, _) in dtypes.items() if value == err_type}
+        if error_columns:
+            log.error(
+                f"columns {error_columns} in {csv_file} have '{err_type}' type, "
+                f"which is not supported at the moment."
+            )
+            raise TypeError(f"CSV type '{err_type}' not supported for column {', '.join(error_columns)}")
+
+    table = con.read_csv(csv_file, header=True, skiprows=1, dtype=duckdb_types).project(
+        ", ".join(f'"{col}"' for col in columns if col not in ["result"])
     )
+    table.create(table_name)
+    csize_MiB = csv_file.stat().st_size / 1024**2
+    log.debug(f'table "{table_name}" created from {csv_file} ({csize_MiB:5.1f} MiB)')
+
+    return table
