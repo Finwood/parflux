@@ -17,9 +17,7 @@ class Bucket:
     @classmethod
     def from_openapi_model(cls, model: influxdb_client.Bucket):
         try:
-            retention = (
-                timedelta(seconds=model.retention_rules[0].every_seconds) or None
-            )
+            retention = timedelta(seconds=model.retention_rules[0].every_seconds) or None
         except IndexError:
             retention = None
         return cls(
