@@ -31,10 +31,7 @@ def empty_path_callback(value: str | None):
 def get(
     ctx: typer.Context,
     path: Annotated[str, typer.Argument(callback=path_callback)],
-    file: Annotated[
-        Path,
-        typer.Argument(exists=False, file_okay=True, dir_okay=False, writable=True),
-    ],
+    dest: Optional[Path] = None,
 ):
     """Download Bucket or Single Measurement"""
     console.print(f"about to load {path}...")
@@ -42,9 +39,9 @@ def get(
 
     match path.split("/"):
         case [bucket]:
-            print("Bucket download not implemented yet")
+            session.download_bucket(bucket, dest)
         case [bucket, measurement]:
-            session.download_measurement(bucket, measurement, file)
+            session.download_measurement(bucket, measurement, dest)
 
 
 @app.command()
@@ -78,7 +75,7 @@ def main(
     start: Optional[datetime] = None,
     stop: Optional[datetime] = None,
     verbose: Annotated[int, typer.Option("--verbose", "-v", count=True)] = 0,
-    reload_env: Annotated[bool, typer.Option("--reload-env", "-r")] = False,
+    reload_env: Annotated[bool, typer.Option("--reload-env", "-e")] = False,
 ):
     if reload_env:
         from dotenv import load_dotenv

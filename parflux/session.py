@@ -32,6 +32,8 @@ class Session:
         self.start = start
         self.stop = stop
 
+        # TODO: session base directory
+
     @property
     def start(self) -> datetime:
         return self._start
@@ -102,13 +104,28 @@ class Session:
         self,
         bucket: Bucket | str,
         measurement: str,
-        dest_file: Path,
+        dest: Optional[Path] = None,
     ) -> None:
+        default_filename = f"{measurement}.parquet"
+        if dest is None:
+            dest = Path(default_filename)
+        if dest.is_dir():
+            dest = dest / default_filename
         return download_measurement(
             self.db,
             bucket,
             measurement,
-            dest_file,
+            dest,
             self.start,
             self.stop,
         )
+
+    def download_bucket(self, bucket: Bucket | str, dest: Optional[Path] = None) -> None:
+        if isinstance(bucket, Bucket):
+            bucket = bucket.name
+        if dest is None:
+            dest = Path(bucket)
+        if not dest.is_dir():
+            dest.mkdir(parents=True)
+        for measurement in self.list_measurements(bucket):
+            self.download_measurement(bucket, measurement, dest / f"{measurement}.parquet")

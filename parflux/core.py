@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Generator, Literal, Optional
 import duckdb
 import influxdb_client
 from influxdb_client import InfluxDBClient
+from slugify import slugify
 
 from .types import Bucket
 
@@ -45,6 +46,10 @@ INFLUX_TYPE_MAP = {
     "dateTime:RFC3339Nano": "TIMESTAMPTZ",
     "duration": "UBIGINT",
 }
+
+
+def relation_name(name: str) -> str:
+    return slugify(name)
 
 
 def get_influx_csv_schema(file: Path) -> dict[str, tuple[str, str]]:
@@ -97,19 +102,29 @@ def download_measurement(
 
             query(db, query_str, file)
 
-        parquet_file_glob = f"{tmp}/{dest.stem}-*.parquet"
-        log.debug(f"merging '{parquet_file_glob}' into one...")
+        pattern = f"{dest.stem}-*.parquet"
+        files = list(tmp.glob(pattern))
 
-        with duckdb.connect() as con:
-            # TODO: S3
-            dest.parent.mkdir(exist_ok=True, parents=True)
-            query_str = f"copy (select * from read_parquet('{parquet_file_glob}', union_by_name=True)) to '{dest}'"
-            log.debug(query_str)
-            con.sql(query_str)
+        if not files:
+            log.info(f'Measurement "{bucket}/{measurement}" did not contain any samples.')
+            return
 
-        log.info(
-            f'Measurement "{bucket}/{measurement}" downloaded to "{dest}" ({dest.stat().st_size/1024**2:.0f} MiB).'
-        )
+        dest.parent.mkdir(exist_ok=True, parents=True)
+        # TODO: S3
+
+        if len(files) == 1:
+            log.debug(f"query only returned one chunk, no merge required")
+            shutil.move(files[0], dest)
+        else:
+            log.debug(f"merging {len(files)} parquet files into one...")
+
+            with duckdb.connect() as con:
+                query_str = f"copy (select * from read_parquet('{tmp}/{pattern}', union_by_name=True)) to '{dest}'"
+                log.debug(query_str)
+                con.sql(query_str)
+
+    dsize_MiB = dest.stat().st_size / 1024**2
+    log.info(f'Measurement "{bucket}/{measurement}" downloaded to "{dest}" ({dsize_MiB:.0f} MiB).')
 
 
 def query(db: InfluxDBClient, query: str, dest_file: Path):
@@ -146,13 +161,13 @@ def query(db: InfluxDBClient, query: str, dest_file: Path):
 
 def load_raw_query(
     con: duckdb.DuckDBPyConnection, raw_file: Path, table_name: Optional[str] = None, keep: bool = False
-) -> str:
+) -> str | None:
     if table_name is None:
-        table_name = raw_file.stem
+        table_name = relation_name(raw_file.stem)
 
     list_of_csvs = _split_raw_influxdb_response(raw_file, keep)
 
-    csv_tables = [f.stem for f in list_of_csvs]
+    csv_tables = [relation_name(f.stem) for f in list_of_csvs]
     for file, tn in zip(list_of_csvs, csv_tables):
         load_annotated_csv(con, file, tn)
 
