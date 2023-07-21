@@ -6,10 +6,11 @@ import textwrap
 from datetime import datetime, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import TYPE_CHECKING, Generator, Literal, Optional
+from typing import TYPE_CHECKING, Any, Generator, Literal, Optional
 
 import duckdb
 import influxdb_client
+import psutil
 from influxdb_client import InfluxDBClient
 from slugify import slugify
 
@@ -48,6 +49,12 @@ INFLUX_TYPE_MAP = {
 }
 
 
+def duckdb_config() -> dict[str, Any]:
+    system_available_memory: int = psutil.virtual_memory().available
+    duck_memory = system_available_memory * 0.6
+    return {"memory_limit": f"{duck_memory:.0f}B"}
+
+
 def relation_name(name: str) -> str:
     return slugify(name)
 
@@ -77,6 +84,7 @@ def download_measurement(
     dest: Path,
     start: datetime,
     stop: datetime,
+    cache_dir: Optional[Path] = None,
 ) -> None:
     if isinstance(bucket, Bucket):
         bucket = bucket.name
@@ -85,7 +93,7 @@ def download_measurement(
 
     log.info(f"downloading {bucket}/{measurement} in range [{start}, {stop})...")
 
-    with TemporaryDirectory(prefix="pfx-get-") as tempdir_name:
+    with TemporaryDirectory(prefix="pfx-get-", dir=cache_dir) as tempdir_name:
         tmp = Path(tempdir_name)
         assert tmp.exists() and tmp.is_dir() and not any(tmp.glob("*"))
         for i, (bstart, bstop) in enumerate(iter_batches(start, stop)):
@@ -100,7 +108,7 @@ def download_measurement(
                     |> drop(columns: ["_start", "_stop"])"""
             )
 
-            query(db, query_str, file)
+            query(db, query_str, file, cache_dir)
 
         pattern = f"{dest.stem}-*.parquet"
         files = list(tmp.glob(pattern))
@@ -118,7 +126,7 @@ def download_measurement(
         else:
             log.debug(f"merging {len(files)} parquet files into one...")
 
-            with duckdb.connect() as con:
+            with duckdb.connect(str(tmp / "duck.db"), config=duckdb_config()) as con:
                 query_str = f"copy (select * from read_parquet('{tmp}/{pattern}', union_by_name=True)) to '{dest}'"
                 log.debug(query_str)
                 con.sql(query_str)
@@ -127,8 +135,8 @@ def download_measurement(
     log.info(f'Measurement "{bucket}/{measurement}" downloaded to "{dest}" ({dsize_MiB:.0f} MiB).')
 
 
-def query(db: InfluxDBClient, query: str, dest_file: Path):
-    with TemporaryDirectory(prefix="pfx-query-") as tempdir_name:
+def query(db: InfluxDBClient, query: str, dest_file: Path, cache_dir: Optional[Path] = None):
+    with TemporaryDirectory(prefix="pfx-query-", dir=cache_dir) as tempdir_name:
         base = Path(tempdir_name)
         assert base.exists() and base.is_dir() and not any(base.glob("*"))
         raw_file = base / f"{dest_file.stem}.txt"
@@ -143,7 +151,7 @@ def query(db: InfluxDBClient, query: str, dest_file: Path):
             rsize_MiB = raw_file.stat().st_size / 1024**2
             log.debug(f"query result stored in {raw_file} ({rsize_MiB:.0f} MiB)")
 
-            with duckdb.connect() as con:
+            with duckdb.connect(str(base / "duck.db"), config=duckdb_config()) as con:
                 table_name = load_raw_query(con, raw_file)
 
                 # TODO: S3?

@@ -1,8 +1,10 @@
+import getpass
 import itertools
 import logging
 import textwrap
 from datetime import datetime, timedelta
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Optional
 
 import influxdb_client
@@ -31,6 +33,10 @@ class Session:
 
         self.start = start
         self.stop = stop
+
+        self._temporary_directory = TemporaryDirectory(prefix=f"parflux-{getpass.getuser()}-", dir="/var/tmp")
+        self.tmp = Path(self._temporary_directory.name).resolve()
+        log.debug(f"session temporary directory: {self.tmp}")
 
         # TODO: session base directory
 
@@ -111,14 +117,7 @@ class Session:
             dest = Path(default_filename)
         if dest.is_dir():
             dest = dest / default_filename
-        return download_measurement(
-            self.db,
-            bucket,
-            measurement,
-            dest,
-            self.start,
-            self.stop,
-        )
+        return download_measurement(self.db, bucket, measurement, dest, self.start, self.stop, self.tmp)
 
     def download_bucket(self, bucket: Bucket | str, dest: Optional[Path] = None) -> None:
         if isinstance(bucket, Bucket):
