@@ -110,6 +110,7 @@ class Session:
         self,
         bucket: Bucket | str,
         measurement: str,
+        filters: list[str] = [],
         dest: Optional[Path] = None,
     ) -> None:
         default_filename = f"{measurement}.parquet"
@@ -117,9 +118,9 @@ class Session:
             dest = Path(default_filename)
         if dest.is_dir():
             dest = dest / default_filename
-        return download_measurement(self.db, bucket, measurement, dest, self.start, self.stop, self.tmp)
+        return download_measurement(self.db, bucket, measurement, dest, self.start, self.stop, filters, self.tmp)
 
-    def download_bucket(self, bucket: Bucket | str, dest: Optional[Path] = None) -> None:
+    def download_bucket(self, bucket: Bucket | str, filters: list[str] = [], dest: Optional[Path] = None) -> None:
         if isinstance(bucket, Bucket):
             bucket = bucket.name
         if dest is None:
@@ -127,4 +128,4 @@ class Session:
         if not dest.is_dir():
             dest.mkdir(parents=True)
         for measurement in self.list_measurements(bucket):
-            self.download_measurement(bucket, measurement, dest / f"{measurement}.parquet")
+            self.download_measurement(bucket, measurement, filters, dest=dest / f"{measurement}.parquet")

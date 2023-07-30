@@ -32,6 +32,7 @@ def get(
     ctx: typer.Context,
     path: Annotated[str, typer.Argument(callback=path_callback)],
     dest: Optional[Path] = None,
+    filter: Annotated[list[str], typer.Option("--filter", "-f", help="additional flux filters")] = [],
 ):
     """Download Bucket or Single Measurement"""
     console.print(f"about to load {path}...")
@@ -39,9 +40,9 @@ def get(
 
     match path.split("/"):
         case [bucket]:
-            session.download_bucket(bucket, dest)
+            session.download_bucket(bucket, filter, dest=dest)
         case [bucket, measurement]:
-            session.download_measurement(bucket, measurement, dest)
+            session.download_measurement(bucket, measurement, filter, dest=dest)
 
 
 @app.command()

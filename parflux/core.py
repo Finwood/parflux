@@ -84,6 +84,7 @@ def download_measurement(
     dest: Path,
     start: datetime,
     stop: datetime,
+    filters: list[str] = [],
     cache_dir: Optional[Path] = None,
 ) -> None:
     if isinstance(bucket, Bucket):
@@ -99,11 +100,14 @@ def download_measurement(
         for i, (bstart, bstop) in enumerate(iter_batches(start, stop)):
             file = tmp / f"{dest.stem}-{i:04d}.parquet"
 
+            combined_filters = [f'r._measurement == "{measurement}"'] + filters
+            filter_string = " and ".join(combined_filters)
+
             query_str = textwrap.dedent(
                 f"""\
                 from (bucket: "{bucket}")
                     |> range(start: {bstart.isoformat()}, stop: {bstop.isoformat()})
-                    |> filter(fn: (r) => r._measurement == "{measurement}")
+                    |> filter(fn: (r) => {filter_string})
                     |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")
                     |> drop(columns: ["_start", "_stop"])"""
             )
