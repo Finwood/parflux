@@ -76,7 +76,7 @@ def main(
     start: Optional[datetime] = None,
     stop: Optional[datetime] = None,
     verbose: Annotated[int, typer.Option("--verbose", "-v", count=True)] = 0,
-    reload_env: Annotated[bool, typer.Option("--reload-env", "-e")] = False,
+    reload_env: Annotated[bool, typer.Option("--reload-env", "-r")] = False,
 ):
     if reload_env:
         from dotenv import load_dotenv

@@ -224,19 +224,18 @@ def load_annotated_csv(
     con: duckdb.DuckDBPyConnection, csv_file: Path, table_name: Optional[str] = None, keep: bool = False
 ) -> str:
     if not table_name:
-        table_name = csv_file.stem
+        table_name = relation_name(csv_file.stem)
     dtypes = get_influx_csv_schema(csv_file)
     duckdb_types = {k: v for k, (_, v) in dtypes.items()}
     columns = dtypes.keys()
 
-    for err_type in "base64Binary", "dateTime:number":
-        error_columns = {key for key, (value, _) in dtypes.items() if value == err_type}
-        if error_columns:
-            log.error(
-                f"columns {error_columns} in {csv_file} have '{err_type}' type, "
-                f"which is not supported at the moment."
-            )
-            raise TypeError(f"CSV type '{err_type}' not supported for column {', '.join(error_columns)}")
+    unsupported_types = {"base64Binary", "dateTime:number"}
+    error_columns = {key: value for key, (value, _) in dtypes.items() if value in unsupported_types}
+    if error_columns:
+        _cols = set(error_columns.keys())
+        _types = set(error_columns.values())
+        log.error(f"columns {_cols} in {csv_file} have types {_types}, which are not supported at the moment.")
+        raise TypeError(f"CSV types {_types!r} not supported for columns {', '.join(_cols)}")
 
     table = con.read_csv(csv_file, header=True, skiprows=1, dtype=duckdb_types).project(
         ", ".join(f'"{col}"' for col in columns if col not in ["result", "table"])
