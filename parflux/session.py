@@ -106,26 +106,22 @@ class Session:
         assert isinstance(response, TableList)
         return {field: count for field, count in response.to_values(["_field", "_value"])}
 
-    def download_measurement(
-        self,
-        bucket: Bucket | str,
-        measurement: str,
-        filters: list[str] = [],
-        dest: Optional[Path] = None,
-    ) -> None:
-        default_filename = f"{measurement}.parquet"
-        if dest is None:
-            dest = Path(default_filename)
-        if dest.is_dir():
-            dest = dest / default_filename
-        return download_measurement(self.db, bucket, measurement, dest, self.start, self.stop, filters, self.tmp)
+    def download(self, queries: list[str], filters: list[str] = [], basedir: Optional[Path] = None) -> None:
+        if basedir is None:
+            basedir = Path(".")  # current directory
 
-    def download_bucket(self, bucket: Bucket | str, filters: list[str] = [], dest: Optional[Path] = None) -> None:
-        if isinstance(bucket, Bucket):
-            bucket = bucket.name
-        if dest is None:
-            dest = Path(bucket)
-        if not dest.is_dir():
-            dest.mkdir(parents=True)
-        for measurement in self.list_measurements(bucket):
-            self.download_measurement(bucket, measurement, filters, dest=dest / f"{measurement}.parquet")
+        for query in queries:
+            match query.split("/"):
+                case [bucket]:
+                    measurements = self.list_measurements(bucket)
+                    log.info(f"loading {len(measurements)} measurements from bucket '{bucket}'")
+                    for m in measurements:
+                        log.info(f"loading '{m}' from bucket '{bucket}'")
+                        download_measurement(self.db, bucket, m, basedir, self.start, self.stop, filters, self.tmp)
+                case [bucket, measurement]:
+                    log.info(f"loading '{measurement}' from bucket '{bucket}'")
+                    download_measurement(
+                        self.db, bucket, measurement, basedir, self.start, self.stop, filters, self.tmp
+                    )
+                case _:
+                    log.warning(f"invalid query, skipping: '{query}'")

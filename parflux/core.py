@@ -81,24 +81,30 @@ def download_measurement(
     db: InfluxDBClient,
     bucket: Bucket | str,
     measurement: str,
-    dest: Path,
+    basedir: Path,
     start: datetime,
     stop: datetime,
     filters: list[str] = [],
     cache_dir: Optional[Path] = None,
-) -> None:
+    overwrite: bool = False,
+) -> Path | None:
     if isinstance(bucket, Bucket):
         bucket = bucket.name
     start = start.astimezone()
     stop = stop.astimezone()
 
-    log.info(f"downloading {bucket}/{measurement} in range [{start}, {stop})...")
+    destfile = basedir / bucket / f"{measurement}.parquet"
+    if destfile.exists() and not overwrite:
+        log.error(f'Skipping "{bucket}/{measurement}": file "{destfile}" already exists.')
+        return
+
+    log.debug(f"downloading {bucket}/{measurement} in range [{start}, {stop})...")
 
     with TemporaryDirectory(prefix="pfx-get-", dir=cache_dir) as tempdir_name:
         tmp = Path(tempdir_name)
         assert tmp.exists() and tmp.is_dir() and not any(tmp.glob("*"))
         for i, (bstart, bstop) in enumerate(iter_batches(start, stop)):
-            file = tmp / f"{dest.stem}-{i:04d}.parquet"
+            file = tmp / f"{destfile.stem}-{i:04d}.parquet"
 
             combined_filters = [f'r._measurement == "{measurement}"'] + filters
             filter_string = " and ".join(combined_filters)
@@ -114,29 +120,31 @@ def download_measurement(
 
             query(db, query_str, file, cache_dir)
 
-        pattern = f"{dest.stem}-*.parquet"
+        pattern = f"{destfile.stem}-*.parquet"
         files = list(tmp.glob(pattern))
 
         if not files:
             log.info(f'Measurement "{bucket}/{measurement}" did not contain any samples.')
             return
 
-        dest.parent.mkdir(exist_ok=True, parents=True)
+        destfile.parent.mkdir(exist_ok=True, parents=True)
         # TODO: S3
 
         if len(files) == 1:
             log.debug(f"query only returned one chunk, no merge required")
-            shutil.move(files[0], dest)
+            shutil.move(files[0], destfile)
         else:
             log.debug(f"merging {len(files)} parquet files into one...")
 
             with duckdb.connect(str(tmp / "duck.db"), config=duckdb_config()) as con:
-                query_str = f"copy (select * from read_parquet('{tmp}/{pattern}', union_by_name=True)) to '{dest}'"
+                query_str = f"copy (select * from read_parquet('{tmp}/{pattern}', union_by_name=True)) to '{destfile}'"
                 log.debug(query_str)
                 con.sql(query_str)
 
-    dsize_MiB = dest.stat().st_size / 1024**2
-    log.info(f'Measurement "{bucket}/{measurement}" downloaded to "{dest}" ({dsize_MiB:.0f} MiB).')
+    dsize_MiB = destfile.stat().st_size / 1024**2
+    log.info(f'Measurement "{bucket}/{measurement}" downloaded to "{destfile}" ({dsize_MiB:.0f} MiB).')
+
+    return destfile
 
 
 def query(db: InfluxDBClient, query: str, dest_file: Path, cache_dir: Optional[Path] = None):
@@ -153,7 +161,7 @@ def query(db: InfluxDBClient, query: str, dest_file: Path, cache_dir: Optional[P
 
         if raw_file.exists() and raw_file.stat().st_size > 2:
             rsize_MiB = raw_file.stat().st_size / 1024**2
-            log.debug(f"query result stored in {raw_file} ({rsize_MiB:.0f} MiB)")
+            log.debug(f"raw query result stored in {raw_file} ({rsize_MiB:.0f} MiB)")
 
             with duckdb.connect(str(base / "duck.db"), config=duckdb_config()) as con:
                 table_name = load_raw_query(con, raw_file)
@@ -165,10 +173,10 @@ def query(db: InfluxDBClient, query: str, dest_file: Path, cache_dir: Optional[P
                 con.sql(query_str)
 
             psize_MiB = dest_file.stat().st_size / 1024**2
-            log.info(f"query result stored in {dest_file} ({psize_MiB:.0f} MiB)")
+            log.debug(f"query result stored in {dest_file} ({psize_MiB:.0f} MiB)")
 
         else:
-            log.info(f"Query did not return any result")
+            log.debug(f"Query did not return any result")
 
 
 def load_raw_query(

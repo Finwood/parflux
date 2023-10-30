@@ -26,7 +26,10 @@ def get(
         list[str],
         typer.Argument(help="<bucket> or <bucket>/<measurement>, can be specified multiple times", show_default=False),
     ],
-    dest: Annotated[Optional[Path], typer.Option(help="directory or file")] = None,
+    dest: Annotated[
+        Optional[Path],
+        typer.Option("--dest", "-d", help="target base directory, defaults to current directory", show_default=False),
+    ] = None,
     filter: Annotated[list[str], typer.Option("--filter", "-f", help="additional flux filters")] = [],
 ):
     """Download Bucket or Single Measurement from InfluxDB.
@@ -34,19 +37,15 @@ def get(
     To download an entire bucket, specify just the bucket name. To download only specific measurements, specify the full
     measurement path like <bucket>/<measurement_name>. Multiple measurement and bucket queries can be selected by simply
     providing multiple query arguments.
+
+    Every measurement will be saved in a separate parquet file, <dest>/<bucket>/<measurement>.parquet.
+
+    The data may be filtered further by specifying one or multiple flux filter queries.
+
+    Attention: No input is sanitized to protect against flux injection. Don't break the query!
     """
     session: Session = ctx.meta[SESSION_KEY]
-
-    for q in query:
-        match q.split("/"):
-            case [bucket]:
-                log.info(f"downloading entire bucket '{bucket}'")
-                session.download_bucket(bucket, filter, dest=dest)
-            case [bucket, measurement]:
-                log.info(f"downloading measurement '{measurement}' from bucket '{bucket}'")
-                session.download_measurement(bucket, measurement, filter, dest=dest)
-            case _:
-                log.warning(f"invalid query, skipping: '{q}'")
+    session.download(query, filter, dest)
 
 
 @app.command("list")
