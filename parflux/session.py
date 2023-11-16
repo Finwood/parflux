@@ -1,5 +1,4 @@
 import getpass
-import itertools
 import logging
 import textwrap
 from datetime import datetime, timedelta
@@ -11,7 +10,7 @@ import influxdb_client
 from influxdb_client import InfluxDBClient, QueryApi
 from influxdb_client.client.flux_table import TableList
 
-from .core import download_measurement
+from .core import download_measurement, list_measurements
 from .types import Bucket
 
 log = logging.getLogger(__name__)
@@ -68,25 +67,9 @@ class Session:
         return [Bucket.from_openapi_model(bucket) for bucket in buckets]
 
     def list_measurements(self, bucket: Bucket | str) -> list[str]:
-        if isinstance(bucket, Bucket):
-            bucket = bucket.name
-        api: QueryApi = self.db.query_api()
-        query_str = textwrap.dedent(
-            f"""\
-            import "influxdata/influxdb/schema"
+        return list_measurements(self.db, bucket, self.start, self.stop)
 
-            schema.measurements(
-                bucket: "{bucket}",
-                start: {self.start.isoformat(timespec="seconds")},
-                stop: {self.stop.isoformat(timespec="seconds")}
-            )
-            """
-        )
-        response = api.query(query_str)
-
-        return list(itertools.chain(*response.to_values(["_value"])))
-
-    def count_records_in_measurement(self, bucket: Bucket | str, measurement: str) -> dict[str, int]:
+    def count_samples_in_measurement(self, bucket: Bucket | str, measurement: str) -> dict[str, int]:
         if isinstance(bucket, Bucket):
             bucket = bucket.name
         api: QueryApi = self.db.query_api()

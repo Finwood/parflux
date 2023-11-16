@@ -3,6 +3,7 @@ import logging
 import shutil
 import subprocess
 import textwrap
+import itertools
 from datetime import datetime, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -11,7 +12,7 @@ from typing import TYPE_CHECKING, Any, Generator, Literal, Optional
 import duckdb
 import influxdb_client
 import psutil
-from influxdb_client import InfluxDBClient
+from influxdb_client import InfluxDBClient, QueryApi
 from slugify import slugify
 
 from .types import Bucket
@@ -75,6 +76,18 @@ def iter_batches(start: datetime, stop: datetime) -> Generator[tuple[datetime, d
         batch_stop = min(batch_start + BATCH_SIZE, stop)
         yield batch_start, batch_stop
         batch_start = batch_stop
+
+
+def list_measurements(
+    db: InfluxDBClient, bucket: Bucket | str, start: Optional[datetime] = None, stop: Optional[datetime] = None
+) -> list[str]:
+    """List measurements in bucket, optionally limited to time range."""
+    if isinstance(bucket, Bucket):
+        bucket = bucket.name
+
+    api: QueryApi = db.query_api()
+
+    return _get_list_of_measurements_from_influxdb_schema(api, bucket)
 
 
 def download_measurement(
@@ -277,3 +290,51 @@ def union_tables(
             con.sql(f'drop table "{table}"')
 
     return target_table_name
+
+
+def _get_list_of_measurements_from_influxdb_schema(api: QueryApi, bucket: str) -> list[str]:
+    query_str = textwrap.dedent(
+        f"""\
+        import "influxdata/influxdb/schema"
+
+        schema.measurements(bucket: "{bucket}")
+        """
+    )
+    log.debug(query_str)
+    response = api.query(query_str)
+    return list(itertools.chain(*response.to_values(["_value"])))
+
+
+def _get_list_of_measurements_in_range(api: QueryApi, bucket: str, start: datetime, stop: datetime) -> list[str]:
+    query_str = textwrap.dedent(
+        f"""\
+        from (bucket: "{bucket}")
+            |> range(start: {start.isoformat()}, stop: {stop.isoformat()})
+            |> keep(columns: ["_measurement"])
+            |> first(column: "_measurement")
+            |> group()"""
+    )
+    log.debug(query_str)
+    response = api.query(query_str)
+    return list(itertools.chain(*response.to_values(["_measurement"])))
+
+
+def _count_samples(
+    api: QueryApi, bucket: str, filters: list[str], start: datetime, stop: datetime
+) -> dict[tuple[str, str], int]:
+    filter_string = " and ".join(filters)
+    query_str = textwrap.dedent(
+        f"""\
+        from (bucket: "{bucket}")
+            |> range(start: {start.isoformat()}, stop: {stop.isoformat()})
+            |> filter(fn: (r) => {filter_string})
+            |> keep(columns: ["_measurement", "_field", "_value"])
+            |> count()"""
+    )
+    log.debug(query_str)
+    response = api.query(query_str)
+
+    return {
+        (measurement, field): count
+        for measurement, field, count in response.to_values(["_measurement", "_field", "_value"])
+    }

@@ -18,6 +18,7 @@
             "request": "launch",
             "program": "test.py",
             "console": "integratedTerminal",
+            "envFile": "${workspaceFolder}/.env",
             "justMyCode": true
         }
     ]
