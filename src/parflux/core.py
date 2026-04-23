@@ -3,7 +3,6 @@ import logging
 import shutil
 import subprocess
 import textwrap
-import itertools
 from datetime import datetime, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -323,7 +322,11 @@ def _get_list_of_measurements_from_influxdb_schema(api: QueryApi, bucket: str) -
     )
     log.debug(query_str)
     response = api.query(query_str)
-    return list(itertools.chain(*response.to_values(["_value"])))
+    measurements: list[str] = []
+    for row in response.to_values(["_value"]):
+        if len(row) == 1 and isinstance(row[0], str):
+            measurements.append(row[0])
+    return measurements
 
 
 def _get_list_of_measurements_in_range(api: QueryApi, bucket: str, start: datetime, stop: datetime) -> list[str]:
@@ -337,7 +340,11 @@ def _get_list_of_measurements_in_range(api: QueryApi, bucket: str, start: dateti
     )
     log.debug(query_str)
     response = api.query(query_str)
-    return list(itertools.chain(*response.to_values(["_measurement"])))
+    measurements: list[str] = []
+    for row in response.to_values(["_measurement"]):
+        if len(row) == 1 and isinstance(row[0], str):
+            measurements.append(row[0])
+    return measurements
 
 
 def _count_samples(
@@ -355,7 +362,11 @@ def _count_samples(
     log.debug(query_str)
     response = api.query(query_str)
 
-    return {
-        (measurement, field): count
-        for measurement, field, count in response.to_values(["_measurement", "_field", "_value"])
-    }
+    counts: dict[tuple[str, str], int] = {}
+    for row in response.to_values(["_measurement", "_field", "_value"]):
+        if len(row) != 3:
+            continue
+        measurement, field, count = row
+        if isinstance(measurement, str) and isinstance(field, str) and isinstance(count, int):
+            counts[(measurement, field)] = count
+    return counts
