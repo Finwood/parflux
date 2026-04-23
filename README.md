@@ -58,3 +58,20 @@ As the CLI is still under heavy construction, refer to the command line help for
 │ list                                                                                                           │
 ╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 ```
+
+## Development
+
+Parflux uses [`prek`](https://github.com/j178/prek) to run pre-commit hooks locally and in CI. Hooks are configured in `prek.toml`.
+
+Set up local hooks:
+
+```bash
+uv sync --dev
+uv run prek install --hook-type pre-commit --hook-type commit-msg
+```
+
+Run hooks manually across all files:
+
+```bash
+uv run prek run --all-files
+```

@@ -1,0 +1,20 @@
+name: prek
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  hooks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Run prek
+        uses: j178/prek-action@v2

@@ -82,12 +82,19 @@ class Session:
                 )
                 |> filter(fn: (r) => r._measurement == "{measurement}")
                 |> keep(columns: ["_field", "_value"])
-                |> count()            
+                |> count()
             """
         )
         response: TableList = api.query(query_str)
         assert isinstance(response, TableList)
-        return {field: count for field, count in response.to_values(["_field", "_value"])}
+        counts: dict[str, int] = {}
+        for row in response.to_values(["_field", "_value"]):
+            if len(row) != 2:
+                continue
+            field, count = row
+            if isinstance(field, str) and isinstance(count, int):
+                counts[field] = count
+        return counts
 
     def download(self, queries: list[str], filters: list[str] = [], basedir: Optional[Path] = None) -> None:
         if basedir is None:
