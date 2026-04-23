@@ -13,8 +13,6 @@ import influxdb_client
 from influxdb_client import InfluxDBClient, QueryApi
 from slugify import slugify
 
-from .types import Bucket
-
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
@@ -70,16 +68,8 @@ def iter_batches(start: datetime, stop: datetime) -> Generator[tuple[datetime, d
         batch_start = batch_stop
 
 
-def list_measurements(
-    db: InfluxDBClient,
-    bucket: Bucket | str,
-    start: Optional[datetime] = None,
-    stop: Optional[datetime] = None,
-) -> list[str]:
+def list_measurements(db: InfluxDBClient, bucket: str) -> list[str]:
     """List measurements in bucket, optionally limited to time range."""
-    if isinstance(bucket, Bucket):
-        bucket = bucket.name
-
     api: QueryApi = db.query_api()
 
     return _get_list_of_measurements_from_influxdb_schema(api, bucket)
@@ -87,7 +77,7 @@ def list_measurements(
 
 def download_measurement(
     db: InfluxDBClient,
-    bucket: Bucket | str,
+    bucket: str,
     measurement: str,
     basedir: Path,
     start: datetime,
@@ -96,8 +86,6 @@ def download_measurement(
     cache_dir: Optional[Path] = None,
     overwrite: bool = False,
 ) -> Path | None:
-    if isinstance(bucket, Bucket):
-        bucket = bucket.name
     start = start.astimezone()
     stop = stop.astimezone()
 
@@ -316,32 +304,12 @@ def _get_list_of_measurements_from_influxdb_schema(api: QueryApi, bucket: str) -
     query_str = textwrap.dedent(
         f"""\
         import "influxdata/influxdb/schema"
-
-        schema.measurements(bucket: "{bucket}")
-        """
+        schema.measurements(bucket: "{bucket}")"""
     )
     log.debug(query_str)
     response = api.query(query_str)
     measurements: list[str] = []
     for row in response.to_values(["_value"]):
-        if len(row) == 1 and isinstance(row[0], str):
-            measurements.append(row[0])
-    return measurements
-
-
-def _get_list_of_measurements_in_range(api: QueryApi, bucket: str, start: datetime, stop: datetime) -> list[str]:
-    query_str = textwrap.dedent(
-        f"""\
-        from (bucket: "{bucket}")
-            |> range(start: {start.isoformat()}, stop: {stop.isoformat()})
-            |> keep(columns: ["_measurement"])
-            |> first(column: "_measurement")
-            |> group()"""
-    )
-    log.debug(query_str)
-    response = api.query(query_str)
-    measurements: list[str] = []
-    for row in response.to_values(["_measurement"]):
         if len(row) == 1 and isinstance(row[0], str):
             measurements.append(row[0])
     return measurements
