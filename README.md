@@ -74,3 +74,27 @@ Run hooks manually across all files:
 ```bash
 uv run prek run --all-files
 ```
+
+### Testing
+
+Parflux uses [`pytest`](https://docs.pytest.org/) with `pytest-cov` for coverage. Install the test dependencies and run the unit suite:
+
+```bash
+uv sync --group test
+uv run pytest
+```
+
+This runs the unit tests, prints a coverage summary, and writes `coverage.xml` for CI consumption. Unit tests do not require a live InfluxDB instance.
+
+A single opt-in integration test exercises an end-to-end download against a real InfluxDB v2 server. It requires the same `INFLUXDB_V2_URL`, `INFLUXDB_V2_ORG`, and `INFLUXDB_V2_TOKEN` environment variables used by the CLI, and only runs when `PARFLUX_RUN_INTEGRATION=1` is set:
+
+```bash
+PARFLUX_RUN_INTEGRATION=1 uv run pytest -m integration
+```
+
+### Continuous Integration
+
+GitHub Actions runs on every pull request and push to `main`:
+
+- `prek` ([`.github/workflows/prek.yml`](.github/workflows/prek.yml)) runs ruff, typos, and the other pre-commit hooks.
+- `tests` ([`.github/workflows/tests.yml`](.github/workflows/tests.yml)) runs the unit suite against Python 3.10-3.13 and uploads `coverage.xml` as a build artifact. It also defines an on-demand `integration` job (triggered via Actions "Run workflow") that spins up InfluxDB 2.7 as a service container and executes the `integration`-marked tests against it.

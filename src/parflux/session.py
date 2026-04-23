@@ -15,10 +15,18 @@ log = logging.getLogger(__name__)
 class Session:
     _default_duration: timedelta = timedelta(days=1)
 
-    def __init__(self, start: Optional[datetime] = None, stop: Optional[datetime] = None):
-        self.db: InfluxDBClient = InfluxDBClient.from_env_properties()
-        if not self.db.ping():
+    def __init__(
+        self,
+        start: Optional[datetime] = None,
+        stop: Optional[datetime] = None,
+        *,
+        db: Optional[InfluxDBClient] = None,
+    ):
+        if db is None:
+            db = InfluxDBClient.from_env_properties()
+        if not db.ping():
             raise ConnectionError("InfluxDB seems unreachable, please check environment variables.")
+        self.db: InfluxDBClient = db
 
         if stop is None:
             stop = datetime.now().replace(microsecond=0).astimezone()
