@@ -67,7 +67,7 @@ Set up local hooks:
 
 ```bash
 uv sync --dev
-uv run prek install
+uv run prek install --hook-type pre-commit --hook-type commit-msg
 ```
 
 Run hooks manually across all files:
