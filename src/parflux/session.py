@@ -82,7 +82,7 @@ class Session:
                 )
                 |> filter(fn: (r) => r._measurement == "{measurement}")
                 |> keep(columns: ["_field", "_value"])
-                |> count()            
+                |> count()
             """
         )
         response: TableList = api.query(query_str)
