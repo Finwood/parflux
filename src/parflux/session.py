@@ -1,17 +1,13 @@
 import getpass
 import logging
-import textwrap
 from datetime import datetime, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Optional
 
-import influxdb_client
-from influxdb_client import InfluxDBClient, QueryApi
-from influxdb_client.client.flux_table import TableList
+from influxdb_client import InfluxDBClient
 
 from .core import download_measurement, list_measurements
-from .types import Bucket
 
 log = logging.getLogger(__name__)
 
@@ -59,42 +55,8 @@ class Session:
             raise ValueError()
         self._stop = value.astimezone()
 
-    def list_buckets(self) -> list[Bucket]:
-        api: influxdb_client.BucketsApi = self.db.buckets_api()
-        response: influxdb_client.Buckets = api.find_buckets()
-        buckets: list[influxdb_client.Bucket] = response.buckets
-
-        return [Bucket.from_openapi_model(bucket) for bucket in buckets]
-
-    def list_measurements(self, bucket: Bucket | str) -> list[str]:
-        return list_measurements(self.db, bucket, self.start, self.stop)
-
-    def count_samples_in_measurement(self, bucket: Bucket | str, measurement: str) -> dict[str, int]:
-        if isinstance(bucket, Bucket):
-            bucket = bucket.name
-        api: QueryApi = self.db.query_api()
-        query_str = textwrap.dedent(
-            f"""\
-            from (bucket: "{bucket}")
-                |> range(
-                    start: {self.start.isoformat(timespec="seconds")},
-                    stop: {self.stop.isoformat(timespec="seconds")}
-                )
-                |> filter(fn: (r) => r._measurement == "{measurement}")
-                |> keep(columns: ["_field", "_value"])
-                |> count()
-            """
-        )
-        response: TableList = api.query(query_str)
-        assert isinstance(response, TableList)
-        counts: dict[str, int] = {}
-        for row in response.to_values(["_field", "_value"]):
-            if len(row) != 2:
-                continue
-            field, count = row
-            if isinstance(field, str) and isinstance(count, int):
-                counts[field] = count
-        return counts
+    def list_measurements(self, bucket: str) -> list[str]:
+        return list_measurements(self.db, bucket)
 
     def download(self, queries: list[str], filters: list[str] = [], basedir: Optional[Path] = None) -> None:
         if basedir is None:

@@ -7,7 +7,6 @@ from typing import Annotated, Optional
 import typer
 from rich.console import Console
 from rich.logging import RichHandler
-from rich.table import Table
 
 from .session import Session
 
@@ -46,44 +45,6 @@ def get(
     """
     session: Session = ctx.meta[SESSION_KEY]
     session.download(query, filter, dest)
-
-
-@app.command("list")
-def list_(
-    ctx: typer.Context,
-    path: Annotated[Optional[str], typer.Argument()] = None,
-):
-    session: Session = ctx.meta[SESSION_KEY]
-    if path is None:
-        table = Table("ID", "Name", "Description", "Retention")
-        for b in session.list_buckets():
-            retention = str(b.retention) if b.retention else "forever"
-            table.add_row(b.id, b.name, b.description, retention)
-
-        console.print(table)
-    else:
-        table = Table()
-        table.add_column("Bucket")
-        table.add_column("Measurement")
-        match path.split("/"):
-            case [bucket]:
-                table.title = (
-                    f"Measurements\n{session.start.replace(tzinfo=None)} - {session.stop.replace(tzinfo=None)}"
-                )
-                measurements = session.list_measurements(bucket)
-                for measurement in measurements:
-                    table.add_row(bucket, measurement)
-            case [bucket, measurement]:
-                table.title = (
-                    f"Record Count\n{session.start.replace(tzinfo=None)} - {session.stop.replace(tzinfo=None)}"
-                )
-                table.add_column("Field")
-                table.add_column("Count", justify="right")
-                for field, count in session.count_samples_in_measurement(bucket, measurement).items():
-                    table.add_row(bucket, measurement, field, f"{count:n}")
-            case _:
-                raise typer.BadParameter(f"path should be '<bucket>' or '<bucket>/<measurement>', got '{path}'")
-        console.print(table)
 
 
 @app.callback()
