@@ -100,7 +100,11 @@ class Session:
                     log.info(f"loading {len(measurements)} measurements from bucket '{bucket}'")
                     for m in measurements:
                         log.info(f"loading '{m}' from bucket '{bucket}'")
-                        download_measurement(self.db, bucket, m, basedir, self.start, self.stop, filters, self.tmp)
+                        try:
+                            download_measurement(self.db, bucket, m, basedir, self.start, self.stop, filters, self.tmp)
+                        except Exception as _e:
+                            log.exception(f"loading '{bucket}/{m}' in range [{self.start}, {self.stop}) failed:\n")
+                            continue
                 case [bucket, measurement]:
                     log.info(f"loading '{measurement}' from bucket '{bucket}'")
                     download_measurement(

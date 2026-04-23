@@ -62,23 +62,28 @@ def list_(
 
         console.print(table)
     else:
+        table = Table()
+        table.add_column("Bucket")
+        table.add_column("Measurement")
         match path.split("/"):
             case [bucket]:
-                measurements = session.list_measurements(bucket)
-                console.print(measurements)
-            case [bucket, measurement]:
-                table = Table(
-                    title=f"Record Count\n{session.start.replace(tzinfo=None)} - {session.stop.replace(tzinfo=None)}"
+                table.title = (
+                    f"Measurements\n{session.start.replace(tzinfo=None)} - {session.stop.replace(tzinfo=None)}"
                 )
-                table.add_column("Bucket")
-                table.add_column("Measurement")
+                measurements = session.list_measurements(bucket)
+                for measurement in measurements:
+                    table.add_row(bucket, measurement)
+            case [bucket, measurement]:
+                table.title = (
+                    f"Record Count\n{session.start.replace(tzinfo=None)} - {session.stop.replace(tzinfo=None)}"
+                )
                 table.add_column("Field")
                 table.add_column("Count", justify="right")
-                for field, count in session.count_records_in_measurement(bucket, measurement).items():
+                for field, count in session.count_samples_in_measurement(bucket, measurement).items():
                     table.add_row(bucket, measurement, field, f"{count:n}")
-                console.print(table)
             case _:
                 raise typer.BadParameter(f"path should be '<bucket>' or '<bucket>/<measurement>', got '{path}'")
+        console.print(table)
 
 
 @app.callback()

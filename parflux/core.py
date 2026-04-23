@@ -7,11 +7,10 @@ import itertools
 from datetime import datetime, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import TYPE_CHECKING, Any, Generator, Literal, Optional
+from typing import TYPE_CHECKING, Generator, Literal, Optional
 
 import duckdb
 import influxdb_client
-import psutil
 from influxdb_client import InfluxDBClient, QueryApi
 from slugify import slugify
 
@@ -50,12 +49,6 @@ INFLUX_TYPE_MAP = {
 }
 
 
-def duckdb_config() -> dict[str, Any]:
-    system_available_memory: int = psutil.virtual_memory().available
-    duck_memory = system_available_memory * 0.6
-    return {"memory_limit": f"{duck_memory:.0f}B"}
-
-
 def relation_name(name: str) -> str:
     return slugify(name)
 
@@ -67,10 +60,15 @@ def get_influx_csv_schema(file: Path) -> dict[str, tuple[str, str]]:
         column_names = next(reader)
     assert datatypes[0] == "#datatype"
     assert column_names[0] == ""
-    return {name: (dtype, INFLUX_TYPE_MAP[dtype]) for name, dtype in zip(column_names[1:], datatypes[1:])}
+    return {
+        name: (dtype, INFLUX_TYPE_MAP[dtype])
+        for name, dtype in zip(column_names[1:], datatypes[1:])
+    }
 
 
-def iter_batches(start: datetime, stop: datetime) -> Generator[tuple[datetime, datetime], None, None]:
+def iter_batches(
+    start: datetime, stop: datetime
+) -> Generator[tuple[datetime, datetime], None, None]:
     batch_start = start
     while batch_start < stop:
         batch_stop = min(batch_start + BATCH_SIZE, stop)
@@ -79,7 +77,10 @@ def iter_batches(start: datetime, stop: datetime) -> Generator[tuple[datetime, d
 
 
 def list_measurements(
-    db: InfluxDBClient, bucket: Bucket | str, start: Optional[datetime] = None, stop: Optional[datetime] = None
+    db: InfluxDBClient,
+    bucket: Bucket | str,
+    start: Optional[datetime] = None,
+    stop: Optional[datetime] = None,
 ) -> list[str]:
     """List measurements in bucket, optionally limited to time range."""
     if isinstance(bucket, Bucket):
@@ -108,7 +109,9 @@ def download_measurement(
 
     destfile = basedir / bucket / f"{measurement}.parquet"
     if destfile.exists() and not overwrite:
-        log.error(f'Skipping "{bucket}/{measurement}": file "{destfile}" already exists.')
+        log.error(
+            f'Skipping "{bucket}/{measurement}": file "{destfile}" already exists.'
+        )
         return
 
     log.debug(f"downloading {bucket}/{measurement} in range [{start}, {stop})...")
@@ -137,30 +140,56 @@ def download_measurement(
         files = list(tmp.glob(pattern))
 
         if not files:
-            log.info(f'Measurement "{bucket}/{measurement}" did not contain any samples.')
+            log.info(
+                f'Measurement "{bucket}/{measurement}" did not contain any samples.'
+            )
             return
 
         destfile.parent.mkdir(exist_ok=True, parents=True)
         # TODO: S3
 
         if len(files) == 1:
-            log.debug(f"query only returned one chunk, no merge required")
+            log.debug("query only returned one chunk, no merge required")
             shutil.move(files[0], destfile)
         else:
             log.debug(f"merging {len(files)} parquet files into one...")
 
-            with duckdb.connect(str(tmp / "duck.db"), config=duckdb_config()) as con:
-                query_str = f"copy (select * from read_parquet('{tmp}/{pattern}', union_by_name=True)) to '{destfile}'"
-                log.debug(query_str)
-                con.sql(query_str)
+            try:
+                with duckdb.connect(str(tmp / "duck.db")) as con:
+                    query_str = (
+                        f"copy (select * from read_parquet('{tmp}/{pattern}', union_by_name=True)) "
+                        f"to '{destfile}'"
+                    )
+                    log.debug(query_str)
+                    con.sql(query_str)
+            except duckdb.OutOfMemoryException:
+                log.warning(
+                    f"merging of {len(files)} parquet files failed with OOM, moving all files instead"
+                )
+                for src_file in files:
+                    shutil.move(src_file, destfile.parent)
+                destfile.unlink()
 
-    dsize_MiB = destfile.stat().st_size / 1024**2
-    log.info(f'Measurement "{bucket}/{measurement}" downloaded to "{destfile}" ({dsize_MiB:.0f} MiB).')
+    if destfile.exists():
+        dsize_MiB = destfile.stat().st_size / 1024**2
+        log.info(
+            f'Measurement "{bucket}/{measurement}" downloaded to "{destfile}" ({dsize_MiB:.0f} MiB).'
+        )
 
-    return destfile
+        return destfile
+    else:
+        # dsize_MiB = sum(f.stat().st_size for f in destfile.parent.glob("*.parquet")) / 1024**2
+        # log.info(f'Measurement "{bucket}/{measurement}" downloaded to "{destfile}" ({dsize_MiB:.0f} MiB).')
+
+        return destfile.parent
 
 
-def query(db: InfluxDBClient, query: str, dest_file: Path, cache_dir: Optional[Path] = None):
+def query(
+    db: InfluxDBClient,
+    query: str,
+    dest_file: Path,
+    cache_dir: Optional[Path] = None,
+):
     with TemporaryDirectory(prefix="pfx-query-", dir=cache_dir) as tempdir_name:
         base = Path(tempdir_name)
         assert base.exists() and base.is_dir() and not any(base.glob("*"))
@@ -176,7 +205,7 @@ def query(db: InfluxDBClient, query: str, dest_file: Path, cache_dir: Optional[P
             rsize_MiB = raw_file.stat().st_size / 1024**2
             log.debug(f"raw query result stored in {raw_file} ({rsize_MiB:.0f} MiB)")
 
-            with duckdb.connect(str(base / "duck.db"), config=duckdb_config()) as con:
+            with duckdb.connect(str(base / "duck.db")) as con:
                 table_name = load_raw_query(con, raw_file)
 
                 # TODO: S3?
@@ -193,7 +222,10 @@ def query(db: InfluxDBClient, query: str, dest_file: Path, cache_dir: Optional[P
 
 
 def load_raw_query(
-    con: duckdb.DuckDBPyConnection, raw_file: Path, table_name: Optional[str] = None, keep: bool = False
+    con: duckdb.DuckDBPyConnection,
+    raw_file: Path,
+    table_name: Optional[str] = None,
+    keep: bool = False,
 ) -> str | None:
     if table_name is None:
         table_name = relation_name(raw_file.stem)
@@ -242,7 +274,10 @@ def _split_raw_influxdb_response(file: Path, keep: bool = False) -> list[Path]:
 
 
 def load_annotated_csv(
-    con: duckdb.DuckDBPyConnection, csv_file: Path, table_name: Optional[str] = None, keep: bool = False
+    con: duckdb.DuckDBPyConnection,
+    csv_file: Path,
+    table_name: Optional[str] = None,
+    keep: bool = False,
 ) -> str:
     if not table_name:
         table_name = relation_name(csv_file.stem)
@@ -251,12 +286,18 @@ def load_annotated_csv(
     columns = dtypes.keys()
 
     unsupported_types = {"base64Binary", "dateTime:number"}
-    error_columns = {key: value for key, (value, _) in dtypes.items() if value in unsupported_types}
+    error_columns = {
+        key: value for key, (value, _) in dtypes.items() if value in unsupported_types
+    }
     if error_columns:
         _cols = set(error_columns.keys())
         _types = set(error_columns.values())
-        log.error(f"columns {_cols} in {csv_file} have types {_types}, which are not supported at the moment.")
-        raise TypeError(f"CSV types {_types!r} not supported for columns {', '.join(_cols)}")
+        log.error(
+            f"columns {_cols} in {csv_file} have types {_types}, which are not supported at the moment."
+        )
+        raise TypeError(
+            f"CSV types {_types!r} not supported for columns {', '.join(_cols)}"
+        )
 
     table = con.read_csv(csv_file, header=True, skiprows=1, dtype=duckdb_types).project(
         ", ".join(f'"{col}"' for col in columns if col not in ["result", "table"])
@@ -292,7 +333,9 @@ def union_tables(
     return target_table_name
 
 
-def _get_list_of_measurements_from_influxdb_schema(api: QueryApi, bucket: str) -> list[str]:
+def _get_list_of_measurements_from_influxdb_schema(
+    api: QueryApi, bucket: str
+) -> list[str]:
     query_str = textwrap.dedent(
         f"""\
         import "influxdata/influxdb/schema"
@@ -305,7 +348,9 @@ def _get_list_of_measurements_from_influxdb_schema(api: QueryApi, bucket: str) -
     return list(itertools.chain(*response.to_values(["_value"])))
 
 
-def _get_list_of_measurements_in_range(api: QueryApi, bucket: str, start: datetime, stop: datetime) -> list[str]:
+def _get_list_of_measurements_in_range(
+    api: QueryApi, bucket: str, start: datetime, stop: datetime
+) -> list[str]:
     query_str = textwrap.dedent(
         f"""\
         from (bucket: "{bucket}")
@@ -336,5 +381,7 @@ def _count_samples(
 
     return {
         (measurement, field): count
-        for measurement, field, count in response.to_values(["_measurement", "_field", "_value"])
+        for measurement, field, count in response.to_values(
+            ["_measurement", "_field", "_value"]
+        )
     }
