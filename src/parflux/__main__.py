@@ -1,5 +1,4 @@
-import sys
-
 from .cli import app
 
-sys.exit(app())
+if __name__ == "__main__":
+    app()

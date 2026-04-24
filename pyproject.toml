@@ -14,7 +14,7 @@ dependencies = [
 ]
 
 [project.scripts]
-parflux = "parflux.__main__:main"
+parflux = "parflux.cli:app"
 
 [dependency-groups]
 dev = [

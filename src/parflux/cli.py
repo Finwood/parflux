@@ -10,8 +10,7 @@ from rich.logging import RichHandler
 
 from .session import Session
 
-app = typer.Typer(pretty_exceptions_show_locals=False)
-SESSION_KEY = f"{__name__}.session"
+app = typer.Typer(pretty_exceptions_show_locals=False, add_completion=False, no_args_is_help=True)
 console = Console()
 log = logging.getLogger(__name__)
 
@@ -19,8 +18,7 @@ locale.setlocale(locale.LC_ALL, "")
 
 
 @app.command()
-def get(
-    ctx: typer.Context,
+def main(
     query: Annotated[
         list[str],
         typer.Argument(help="<bucket> or <bucket>/<measurement>, can be specified multiple times", show_default=False),
@@ -30,6 +28,10 @@ def get(
         typer.Option("--dest", "-d", help="target base directory, defaults to current directory", show_default=False),
     ] = None,
     filter: Annotated[list[str], typer.Option("--filter", "-f", help="additional flux filters")] = [],
+    start: Optional[datetime] = None,
+    stop: Optional[datetime] = None,
+    verbose: Annotated[int, typer.Option("--verbose", "-v", count=True)] = 0,
+    reload_env: Annotated[bool, typer.Option("--reload-env", "-r")] = False,
 ):
     """Download Bucket or Single Measurement from InfluxDB.
 
@@ -43,18 +45,6 @@ def get(
 
     Attention: No input is sanitized to protect against flux injection. Don't break the query!
     """
-    session: Session = ctx.meta[SESSION_KEY]
-    session.download(query, filter, dest)
-
-
-@app.callback()
-def main(
-    ctx: typer.Context,
-    start: Optional[datetime] = None,
-    stop: Optional[datetime] = None,
-    verbose: Annotated[int, typer.Option("--verbose", "-v", count=True)] = 0,
-    reload_env: Annotated[bool, typer.Option("--reload-env", "-r")] = False,
-):
     if reload_env:
         from dotenv import load_dotenv
 
@@ -71,4 +61,5 @@ def main(
         handlers=[RichHandler()],
     )
 
-    ctx.meta[SESSION_KEY] = Session(start, stop)
+    session = Session(start, stop)
+    session.download(query, filter, dest)
