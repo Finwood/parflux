@@ -171,3 +171,7 @@ When a tag like `v0.2.0` is pushed, GitHub Actions will:
 
 If the tag and `pyproject.toml` version do not match, the workflow fails before publish.
 Fix by updating `pyproject.toml` or using the correct tag, then push a corrected tag.
+
+## License
+
+This project is licensed under the MIT License. See `LICENSE`.
