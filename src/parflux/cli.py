@@ -19,6 +19,10 @@ DEFAULT_DURATION = timedelta(days=1)
 DEFAULT_BATCH_SIZE_HOURS = int(DEFAULT_BATCH_SIZE.total_seconds() // 3600)
 
 
+def _now() -> datetime:
+    return datetime.now()
+
+
 @app.command()
 def main(
     query: Annotated[
@@ -71,7 +75,7 @@ def main(
         dest = Path(".")
 
     if stop is None:
-        stop = datetime.now().replace(microsecond=0).astimezone()
+        stop = _now().replace(microsecond=0).astimezone()
     else:
         stop = stop.astimezone()
 

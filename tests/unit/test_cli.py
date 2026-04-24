@@ -12,8 +12,8 @@ runner = CliRunner()
 def test_cli_applies_defaults_and_calls_download(mocker):
     download = mocker.patch("parflux.cli.download")
     now = datetime(2024, 1, 2, 3, 4, 5, 123456, tzinfo=timezone.utc)
-    mock_dt = mocker.patch("parflux.cli.datetime")
-    mock_dt.now.return_value = now
+    mock_now = mocker.patch("parflux.cli._now")
+    mock_now.return_value = now
 
     result = runner.invoke(app, ["bucket/cpu"])
 
