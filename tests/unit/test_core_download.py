@@ -22,17 +22,17 @@ def mock_db():
 @pytest.fixture
 def time_range():
     start = datetime(2024, 1, 1, 0, 0, tzinfo=UTC)
-    stop = start + timedelta(days=1)
-    return start, stop
+    end = start + timedelta(days=1)
+    return start, end
 
 
 class TestDownloadInit:
     def test_uses_env_client(self, mock_db, mocker, time_range, tmp_path):
         factory = mocker.patch("parflux.core.InfluxDBClient.from_env_properties", return_value=mock_db)
         mocker.patch("parflux.core.download_measurement")
-        start, stop = time_range
+        start, end = time_range
 
-        download(["bucket/cpu"], start=start, stop=stop, basedir=tmp_path, filters=[])
+        download(["bucket/cpu"], start=start, end=end, basedir=tmp_path, filters=[])
 
         factory.assert_called_once()
 
@@ -40,10 +40,10 @@ class TestDownloadInit:
         db = MagicMock(spec=InfluxDBClient)
         db.ping.return_value = False
         mocker.patch("parflux.core.InfluxDBClient.from_env_properties", return_value=db)
-        start, stop = time_range
+        start, end = time_range
 
         with pytest.raises(ConnectionError, match="InfluxDB seems unreachable"):
-            download(["bucket/cpu"], start=start, stop=stop, basedir=tmp_path, filters=[])
+            download(["bucket/cpu"], start=start, end=end, basedir=tmp_path, filters=[])
 
 
 class TestDownloadOrchestration:
@@ -51,9 +51,9 @@ class TestDownloadOrchestration:
         mocker.patch("parflux.core.InfluxDBClient.from_env_properties", return_value=mock_db)
         list_fn = mocker.patch("parflux.core.list_measurements", return_value=["cpu", "mem"])
         dload = mocker.patch("parflux.core.download_measurement")
-        start, stop = time_range
+        start, end = time_range
 
-        download(["mybucket"], start=start, stop=stop, basedir=tmp_path, filters=['r.host == "h1"'])
+        download(["mybucket"], start=start, end=end, basedir=tmp_path, filters=['r.host == "h1"'])
 
         list_fn.assert_called_once_with(mock_db, "mybucket")
         assert dload.call_count == 2
@@ -66,9 +66,9 @@ class TestDownloadOrchestration:
         mocker.patch("parflux.core.InfluxDBClient.from_env_properties", return_value=mock_db)
         list_fn = mocker.patch("parflux.core.list_measurements")
         dload = mocker.patch("parflux.core.download_measurement")
-        start, stop = time_range
+        start, end = time_range
 
-        download(["mybucket/cpu"], start=start, stop=stop, basedir=tmp_path, filters=[])
+        download(["mybucket/cpu"], start=start, end=end, basedir=tmp_path, filters=[])
 
         list_fn.assert_not_called()
         dload.assert_called_once()
@@ -80,9 +80,9 @@ class TestDownloadOrchestration:
         mocker.patch("parflux.core.InfluxDBClient.from_env_properties", return_value=mock_db)
         dload = mocker.patch("parflux.core.download_measurement")
         mocker.patch("parflux.core.list_measurements")
-        start, stop = time_range
+        start, end = time_range
 
-        download(["too/many/slashes"], start=start, stop=stop, basedir=tmp_path, filters=[])
+        download(["too/many/slashes"], start=start, end=end, basedir=tmp_path, filters=[])
 
         dload.assert_not_called()
         assert any("invalid query" in rec.message for rec in caplog.records)
@@ -94,23 +94,23 @@ class TestDownloadOrchestration:
             "parflux.core.download_measurement",
             side_effect=[RuntimeError("boom"), None],
         )
-        start, stop = time_range
+        start, end = time_range
 
-        download(["mybucket"], start=start, stop=stop, basedir=tmp_path, filters=[])
+        download(["mybucket"], start=start, end=end, basedir=tmp_path, filters=[])
 
         assert dload.call_count == 2
 
     def test_forwards_explicit_args_to_download_measurement(self, mock_db, mocker, time_range, tmp_path):
         mocker.patch("parflux.core.InfluxDBClient.from_env_properties", return_value=mock_db)
         dload = mocker.patch("parflux.core.download_measurement")
-        start, stop = time_range
+        start, end = time_range
 
-        download(["bucket/cpu"], start=start, stop=stop, basedir=tmp_path, filters=['r.site == "lab"'])
+        download(["bucket/cpu"], start=start, end=end, basedir=tmp_path, filters=['r.site == "lab"'])
 
         call = dload.call_args
         assert call.args[3] == tmp_path
         assert call.args[4] == start
-        assert call.args[5] == stop
+        assert call.args[5] == end
         assert call.args[6] == ['r.site == "lab"']
         assert call.args[7].is_absolute()
         assert call.args[7].parent == Path("/var/tmp")

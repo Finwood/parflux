@@ -136,7 +136,7 @@ def main(
     download(
         queries=query,
         start=start,
-        stop=end,
+        end=end,
         basedir=dest,
         filters=filter,
         batch_size=timedelta(hours=batch_size),

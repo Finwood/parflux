@@ -62,13 +62,13 @@ def get_influx_csv_schema(file: Path) -> dict[str, tuple[str, str]]:
 
 
 def iter_batches(
-    start: datetime, stop: datetime, batch_size: timedelta = DEFAULT_BATCH_SIZE
+    start: datetime, end: datetime, batch_size: timedelta = DEFAULT_BATCH_SIZE
 ) -> Generator[tuple[datetime, datetime], None, None]:
     batch_start = start
-    while batch_start < stop:
-        batch_stop = min(batch_start + batch_size, stop)
-        yield batch_start, batch_stop
-        batch_start = batch_stop
+    while batch_start < end:
+        batch_end = min(batch_start + batch_size, end)
+        yield batch_start, batch_end
+        batch_start = batch_end
 
 
 def list_measurements(db: InfluxDBClient, bucket: str) -> list[str]:
@@ -82,7 +82,7 @@ def download(
     queries: list[str],
     *,
     start: datetime,
-    stop: datetime,
+    end: datetime,
     basedir: Path,
     filters: list[str],
     batch_size: timedelta = DEFAULT_BATCH_SIZE,
@@ -93,7 +93,7 @@ def download(
         raise ConnectionError("InfluxDB seems unreachable, please check environment variables.")
 
     start = start.astimezone()
-    stop = stop.astimezone()
+    end = end.astimezone()
 
     with TemporaryDirectory(prefix=f"parflux-{getpass.getuser()}-", dir="/var/tmp") as tempdir_name:
         tmp = Path(tempdir_name).resolve()
@@ -113,14 +113,14 @@ def download(
                                 measurement,
                                 basedir,
                                 start,
-                                stop,
+                                end,
                                 filters,
                                 tmp,
                                 batch_size=batch_size,
                                 overwrite=overwrite,
                             )
                         except Exception:
-                            log.exception(f"loading '{bucket}/{measurement}' in range [{start}, {stop}) failed:\n")
+                            log.exception(f"loading '{bucket}/{measurement}' in range [{start}, {end}) failed:\n")
                             continue
                 case [bucket, measurement]:
                     log.info(f"loading '{measurement}' from bucket '{bucket}'")
@@ -130,7 +130,7 @@ def download(
                         measurement,
                         basedir,
                         start,
-                        stop,
+                        end,
                         filters,
                         tmp,
                         batch_size=batch_size,
@@ -146,26 +146,26 @@ def download_measurement(
     measurement: str,
     basedir: Path,
     start: datetime,
-    stop: datetime,
+    end: datetime,
     filters: list[str] = [],
     cache_dir: Optional[Path] = None,
     batch_size: timedelta = DEFAULT_BATCH_SIZE,
     overwrite: bool = False,
 ) -> Path | None:
     start = start.astimezone()
-    stop = stop.astimezone()
+    end = end.astimezone()
 
     destfile = basedir / bucket / f"{measurement}.parquet"
     if destfile.exists() and not overwrite:
         log.error(f'Skipping "{bucket}/{measurement}": file "{destfile}" already exists.')
         return
 
-    log.debug(f"downloading {bucket}/{measurement} in range [{start}, {stop})...")
+    log.debug(f"downloading {bucket}/{measurement} in range [{start}, {end})...")
 
     with TemporaryDirectory(prefix="pfx-get-", dir=cache_dir) as tempdir_name:
         tmp = Path(tempdir_name)
         assert tmp.exists() and tmp.is_dir() and not any(tmp.glob("*"))
-        for i, (bstart, bstop) in enumerate(iter_batches(start, stop, batch_size=batch_size)):
+        for i, (bstart, bend) in enumerate(iter_batches(start, end, batch_size=batch_size)):
             file = tmp / f"{destfile.stem}-{i:04d}.parquet"
 
             combined_filters = [f'r._measurement == "{measurement}"'] + filters
@@ -174,7 +174,7 @@ def download_measurement(
             query_str = textwrap.dedent(
                 f"""\
                 from (bucket: "{bucket}")
-                    |> range(start: {bstart.isoformat()}, stop: {bstop.isoformat()})
+                    |> range(start: {bstart.isoformat()}, stop: {bend.isoformat()})
                     |> filter(fn: (r) => {filter_string})
                     |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")
                     |> drop(columns: ["_start", "_stop"])"""

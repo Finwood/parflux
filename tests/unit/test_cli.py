@@ -24,15 +24,15 @@ def test_cli_applies_defaults_and_calls_download(mocker):
     assert kwargs["basedir"] == Path(".")
     assert kwargs["filters"] == []
     assert kwargs["batch_size"] == DEFAULT_BATCH_SIZE
-    assert kwargs["stop"].microsecond == 0
-    assert kwargs["stop"].tzinfo is not None
-    assert kwargs["start"] == kwargs["stop"] - timedelta(days=1)
+    assert kwargs["end"].microsecond == 0
+    assert kwargs["end"].tzinfo is not None
+    assert kwargs["start"] == kwargs["end"] - timedelta(days=1)
 
 
 def test_cli_forwards_explicit_values(mocker, tmp_path):
     download = mocker.patch("parflux.cli.download")
     start = "2024-01-01T00:00:00"
-    stop = "2024-01-02T00:00:00"
+    end = "2024-01-02T00:00:00"
 
     result = runner.invoke(
         app,
@@ -48,8 +48,8 @@ def test_cli_forwards_explicit_values(mocker, tmp_path):
             "--batch-size=6",
             "--start",
             start,
-            "--stop",
-            stop,
+            "--end",
+            end,
         ],
     )
 
@@ -60,9 +60,9 @@ def test_cli_forwards_explicit_values(mocker, tmp_path):
     assert kwargs["filters"] == ['r.host == "h1"', "r.env =~ /prod/"]
     assert kwargs["batch_size"] == timedelta(hours=6)
     assert kwargs["start"].year == 2024 and kwargs["start"].month == 1 and kwargs["start"].day == 1
-    assert kwargs["stop"].year == 2024 and kwargs["stop"].month == 1 and kwargs["stop"].day == 2
+    assert kwargs["end"].year == 2024 and kwargs["end"].month == 1 and kwargs["end"].day == 2
     assert kwargs["start"].tzinfo is not None
-    assert kwargs["stop"].tzinfo is not None
+    assert kwargs["end"].tzinfo is not None
 
 
 def test_cli_reload_env_flag_calls_load_dotenv(mocker):
