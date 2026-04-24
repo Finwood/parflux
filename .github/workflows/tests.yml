@@ -13,12 +13,13 @@ permissions:
 
 jobs:
   unit:
-    name: unit (py${{ matrix.python-version }})
+    name: unit (py${{ matrix.python-version }}, ${{ matrix.resolution-strategy }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+        resolution-strategy: ["lowest-direct", "highest"]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -31,7 +32,7 @@ jobs:
           cache-dependency-glob: "uv.lock"
 
       - name: Install dependencies
-        run: uv sync --group test
+        run: uv sync --group test --resolution ${{ matrix.resolution-strategy }}
 
       - name: Run tests
         run: uv run pytest

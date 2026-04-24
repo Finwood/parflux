@@ -2,7 +2,8 @@ version = 1
 revision = 3
 requires-python = ">=3.10"
 resolution-markers = [
-    "python_full_version >= '3.12'",
+    "python_full_version >= '3.14'",
+    "python_full_version >= '3.12' and python_full_version < '3.14'",
     "python_full_version == '3.11.*'",
     "python_full_version < '3.11'",
 ]
@@ -300,7 +301,8 @@ test = [
 
 [package.metadata]
 requires-dist = [
-    { name = "duckdb", specifier = ">=1.1.0" },
+    { name = "duckdb", marker = "python_full_version < '3.14'", specifier = ">=1.4" },
+    { name = "duckdb", marker = "python_full_version >= '3.14'", specifier = ">=1.5" },
     { name = "influxdb-client", specifier = ">=1.36.1" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "python-slugify", specifier = ">=8.0.1" },
