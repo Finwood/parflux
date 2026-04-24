@@ -1,33 +1,21 @@
-# Parflux - Efficient InfluxDB Data Downloader and Exporter
+# Parflux
 
-![Parflux Logo](parflux_logo.png)
-
-Parflux is an open-source Python project that offers a command-line interface for efficiently downloading and exporting
-large datasets from InfluxDB. The primary objective of Parflux is to store the query results in Parquet files, which
-contributes to its name, and it leverages DuckDB internally for handling the heavy lifting.
-The motivation behind using DuckDB is to overcome the limitations of the native InfluxDB Python client, which might not be as efficient when dealing with extensive datasets.
-
-## Features
-
-- Efficiently download and export large datasets from InfluxDB.
-- Store query results in Parquet files for optimized storage.
-- Utilize DuckDB for enhanced performance and handling of big data.
-- Simple and easy-to-use command-line interface.
-- Open-source and freely available for anyone to use and contribute.
+Parflux is a Linux-focused CLI for exporting large InfluxDB v2 datasets to parquet files.
+It is designed for high-volume exports (including gigabyte-scale ranges), supports bucket-wide and
+measurement-level queries, and targets fast batch workflows rather than library-style usage.
 
 ## Installation
 
-Before installing Parflux, ensure you have Python 3.x and pip installed on your system. To install Parflux, follow these steps:
-
 ```bash
-pip install parflux
+$ uv tool install parflux
+
+# or just use it directly
+$ uvx parflux
 ```
 
 ## Usage
 
-Parflux comes with a user-friendly command-line interface that makes it easy to download/export data efficiently.
-
-> **Attention**: parflux requires InfluxDB connection and authentication settings to be set up via environment variables:
+Set InfluxDB connection/authentication environment variables:
 >
 > ```conf
 > # .env
@@ -37,25 +25,59 @@ Parflux comes with a user-friendly command-line interface that makes it easy to 
 > INFLUXDB_V2_TIMEOUT=300000
 > ```
 
-As the CLI is still under heavy construction, refer to the command line help for usage information:
+Inspect all CLI options:
 
 ```shell
-> parflux --help
+$ parflux --help
 
- Usage: parflux [OPTIONS] COMMAND [ARGS]...
+ Usage: parflux [OPTIONS] QUERY...
 
-╭─ Options ──────────────────────────────────────────────────────────────────────────────────────────────────────╮
-│ --start                       TIMESTAMP  [default: None]                                                       │
-│ --stop                        TIMESTAMP  [default: None]                                                       │
-│ --verbose             -v      INTEGER    [default: 0]                                                          │
-│ --reload-env          -r                                                                                       │
-│ --install-completion          Install completion for the current shell.                                        │
-│ --show-completion             Show completion for the current shell, to copy it or customize the installation. │
-│ --help                        Show this message and exit.                                                      │
-╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-╭─ Commands ─────────────────────────────────────────────────────────────────────────────────────────────────────╮
-│ get                           Download Bucket or Single Measurement                                            │
-╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+ Export InfluxDB v2 data to parquet files.
+
+ Provide one or more selectors as <bucket> or <bucket>/<measurement>.
+ Results are written to <dest>/<bucket>/<measurement>.parquet and can be
+ constrained by time range and optional Flux filters.
+
+ Warning: Query input is used as-is and is not sanitized against Flux injection.
+ Only run trusted queries.
+
+╭─ Arguments ──────────────────────────────────────────────────────────────────────╮
+│ *    query      QUERY...  One or more selectors in the form <bucket> or          │
+│                           <bucket>/<measurement>.                                │
+│                           [required]                                             │
+╰──────────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────────╮
+│ --start       -s      START         Start timestamp (inclusive), e.g.            │
+│                                     2026-04-24T14:45:00+02:00 or 2025-01-01. If  │
+│                                     no timezone is specified, the local timezone │
+│                                     is assumed. [default: END - 1 day]           │
+│ --end         -e      END           End timestamp (exclusive). If no timezone is │
+│                                     specified, the local timezone is assumed.    │
+│                                     [default: now]                               │
+│ --dest        -d      PATH          Destination base directory where parquet     │
+│                                     files should be saved. [default: current     │
+│                                     directory]                                   │
+│ --filter      -f      TEXT          Additional flux filters to apply to the      │
+│                                     query. The current record is available as r. │
+│                                     Can be specified multiple times.             │
+│                                     Example: r.host == 'h1' or r.env =~ /prod/   │
+│ --verbose     -v                    Increase verbosity. Can be specified         │
+│                                     multiple times.                              │
+│ --reload-env  -r                    Reload environment variables from .env file. │
+│ --batch-size          HOURS [x>=1]  Query batch size in hours. [default: 24]     │
+│ --help                              Show this message and exit.                  │
+╰──────────────────────────────────────────────────────────────────────────────────╯
+
+```
+
+Common examples:
+
+```shell
+# Export a full bucket for a time range
+parflux my-bucket --start 2026-04-01 --end 2026-04-02
+
+# Export one measurement with an extra Flux filter
+parflux my-bucket/cpu --filter "r.host == 'h1'"
 ```
 
 ## Development
@@ -91,10 +113,3 @@ A single opt-in integration test exercises an end-to-end download against a real
 ```bash
 PARFLUX_RUN_INTEGRATION=1 uv run pytest -m integration
 ```
-
-### Continuous Integration
-
-GitHub Actions runs on every pull request and push to `main`:
-
-- `prek` ([`.github/workflows/prek.yml`](.github/workflows/prek.yml)) runs ruff, typos, and the other pre-commit hooks.
-- `tests` ([`.github/workflows/tests.yml`](.github/workflows/tests.yml)) runs the unit suite against Python 3.10-3.13 and uploads `coverage.xml` as a build artifact. It also defines an on-demand `integration` job (triggered via Actions "Run workflow") that spins up InfluxDB 2.7 as a service container and executes the `integration`-marked tests against it.
