@@ -41,8 +41,6 @@ class Session:
         self.tmp = Path(self._temporary_directory.name).resolve()
         log.debug(f"session temporary directory: {self.tmp}")
 
-        # TODO: session base directory
-
     @property
     def start(self) -> datetime:
         return self._start

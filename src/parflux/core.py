@@ -124,7 +124,6 @@ def download_measurement(
             return
 
         destfile.parent.mkdir(exist_ok=True, parents=True)
-        # TODO: S3
 
         if len(files) == 1:
             log.debug("query only returned one chunk, no merge required")
@@ -181,7 +180,6 @@ def query(
             with duckdb.connect(str(base / "duck.db")) as con:
                 table_name = load_raw_query(con, raw_file)
 
-                # TODO: S3?
                 dest_file.parent.mkdir(exist_ok=True, parents=True)
                 query_str = f"copy (select * from \"{table_name}\" order by _time) to '{dest_file}'"
                 log.debug(query_str)
