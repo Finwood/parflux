@@ -1,41 +1,18 @@
-# Byte-compiled files
+# Python-generated files
 __pycache__/
-*.py[cod]
-*$py.class
-
-# Distribution / packaging
+*.py[oc]
 build/
 dist/
-*.egg-info/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
 
 # Secrets
 .env
-*.env
 
-# Data
-*.csv
-*.parquet
-*.db
-
-# Logs
-*.log
-
-# Unit test / coverage reports
-htmlcov/
-.tox/
-.nox/
+# Test and coverage
 .coverage
-.coverage.*
-.cache
-nosetests.xml
 coverage.xml
-*.cover
-.pytest_cache/
-cover/
-report.xml
-codeclimate.json
-
-# mypy
-.mypy_cache/
-.mypy_stubs/
-mypy.(txt|xml)
+htmlcov/

@@ -9,9 +9,9 @@ pytestmark = pytest.mark.integration
 
 
 def test_download_bucket_roundtrip(influx_client, seeded_bucket, tmp_path):
-    bucket_name, start, stop, expected_rows = seeded_bucket
+    bucket_name, start, end, expected_rows = seeded_bucket
 
-    download([bucket_name], start=start, stop=stop, basedir=tmp_path, filters=[])
+    download([bucket_name], start=start, end=end, basedir=tmp_path, filters=[])
 
     parquet_file = tmp_path / bucket_name / "cpu.parquet"
     assert parquet_file.exists(), f"expected {parquet_file} to be created"

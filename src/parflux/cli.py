@@ -17,6 +17,7 @@ log = logging.getLogger(__name__)
 locale.setlocale(locale.LC_ALL, "")
 DEFAULT_DURATION = timedelta(days=1)
 DEFAULT_BATCH_SIZE_HOURS = int(DEFAULT_BATCH_SIZE.total_seconds() // 3600)
+DATETIME_FORMATS = ["%Y-%m-%d", "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S%z"]
 
 
 def _now() -> datetime:
@@ -27,33 +28,84 @@ def _now() -> datetime:
 def main(
     query: Annotated[
         list[str],
-        typer.Argument(help="<bucket> or <bucket>/<measurement>, can be specified multiple times", show_default=False),
+        typer.Argument(
+            help="One or more selectors in the form <bucket> or <bucket>/<measurement>.",
+            show_default=False,
+        ),
     ],
-    dest: Annotated[
-        Optional[Path],
-        typer.Option("--dest", "-d", help="target base directory, defaults to current directory", show_default=False),
+    start: Annotated[
+        Optional[datetime],
+        typer.Option(
+            "--start",
+            "-s",
+            help="Start timestamp (inclusive), e.g. [bold green]2026-04-24T14:45:00+02:00[/bold green] or [bold green]2025-01-01[/bold green]. "
+            "If no timezone is specified, the local timezone is assumed. "
+            r"[dim]\[default: END - 1 day][/dim]",
+            metavar="START",
+            formats=DATETIME_FORMATS,
+        ),
     ] = None,
-    filter: Annotated[list[str], typer.Option("--filter", "-f", help="additional flux filters")] = [],
+    end: Annotated[
+        Optional[datetime],
+        typer.Option(
+            "--end",
+            "-e",
+            help="End timestamp (exclusive). If no timezone is specified, the local timezone is assumed. "
+            r"[dim]\[default: now][/dim]",
+            metavar="END",
+            formats=DATETIME_FORMATS,
+        ),
+    ] = None,
+    dest: Annotated[
+        Path,
+        typer.Option(
+            "--dest",
+            "-d",
+            help="Destination base directory where parquet files should be saved. "
+            r"[dim]\[default: current directory][/dim]",
+            show_default=False,
+        ),
+    ] = Path("."),
+    filter: Annotated[
+        list[str],
+        typer.Option(
+            "--filter",
+            "-f",
+            help="Additional flux filters to apply to the query. The current record is available as [bold green]r[/bold green]. "
+            "Can be specified multiple times.\b\n\n"
+            "Example: [bold green]r.host == 'h1'[/bold green] or [bold green]r.env =~ /prod/[/bold green]",
+        ),
+    ] = [],
+    verbose: Annotated[
+        int,
+        typer.Option(
+            "--verbose",
+            "-v",
+            count=True,
+            help="Increase verbosity. Can be specified multiple times.",
+            metavar="",
+            show_default=False,
+        ),
+    ] = 0,
+    reload_env: Annotated[
+        bool, typer.Option("--reload-env", "-r", help="Reload environment variables from .env file.")
+    ] = False,
     batch_size: Annotated[
         int,
-        typer.Option("--batch-size", help="query batch size in hours", min=1),
+        typer.Option(
+            "--batch-size",
+            min=1,
+            metavar="HOURS",
+            help="Query batch size in hours.",
+        ),
     ] = DEFAULT_BATCH_SIZE_HOURS,
-    start: Annotated[Optional[datetime], typer.Option("--start", help="start timestamp (inclusive)")] = None,
-    stop: Annotated[Optional[datetime], typer.Option("--stop", help="stop timestamp (exclusive)")] = None,
-    verbose: Annotated[int, typer.Option("--verbose", "-v", count=True)] = 0,
-    reload_env: Annotated[bool, typer.Option("--reload-env", "-r")] = False,
 ):
-    """Download Bucket or Single Measurement from InfluxDB.
+    """Export InfluxDB v2 data to parquet files.
 
-    To download an entire bucket, specify just the bucket name. To download only specific measurements, specify the full
-    measurement path like <bucket>/<measurement_name>. Multiple measurement and bucket queries can be selected by simply
-    providing multiple query arguments.
+    [not dim]Provide one or more selectors as <bucket> or <bucket>/<measurement>.
+    Results are written to <dest>/<bucket>/<measurement>.parquet and can be constrained by time range and optional Flux filters.
 
-    Every measurement will be saved in a separate parquet file, <dest>/<bucket>/<measurement>.parquet.
-
-    The data may be filtered further by specifying one or multiple flux filter queries.
-
-    Attention: No input is sanitized to protect against flux injection. Don't break the query!
+    [bold red]Warning:[/bold red] Query input is used as-is and is not sanitized against Flux injection. Only run trusted queries.
     """
     if reload_env:
         from dotenv import load_dotenv
@@ -71,23 +123,20 @@ def main(
         handlers=[RichHandler()],
     )
 
-    if dest is None:
-        dest = Path(".")
-
-    if stop is None:
-        stop = _now().replace(microsecond=0).astimezone()
+    if end is None:
+        end = _now().replace(microsecond=0).astimezone()
     else:
-        stop = stop.astimezone()
+        end = end.astimezone()
 
     if start is None:
-        start = stop - DEFAULT_DURATION
+        start = end - DEFAULT_DURATION
     else:
         start = start.astimezone()
 
     download(
         queries=query,
         start=start,
-        stop=stop,
+        end=end,
         basedir=dest,
         filters=filter,
         batch_size=timedelta(hours=batch_size),

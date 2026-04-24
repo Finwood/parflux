@@ -49,7 +49,7 @@ def seeded_bucket(influx_client):
         write_api.write(bucket=bucket_name, org=org, record=points)
 
         start = now - timedelta(minutes=1)
-        stop = now + timedelta(seconds=1)
-        yield bucket_name, start, stop, 10
+        end = now + timedelta(seconds=1)
+        yield bucket_name, start, end, 10
     finally:
         buckets_api.delete_bucket(bucket)
