@@ -204,8 +204,8 @@ def download_measurement(
                     )
                     log.debug(query_str)
                     con.sql(query_str)
-            except duckdb.OutOfMemoryException:
-                log.warning(f"merging of {len(files)} parquet files failed with OOM, moving all files instead")
+            except duckdb.OutOfMemoryException:  # pragma: no cover
+                log.warning(f"merging {len(files)} parquet files failed with OOM, moving all files instead")
                 for src_file in files:
                     shutil.move(src_file, destfile.parent)
                 destfile.unlink()
@@ -215,7 +215,7 @@ def download_measurement(
         log.info(f'Measurement "{bucket}/{measurement}" downloaded to "{destfile}" ({dsize_MiB:.0f} MiB).')
 
         return destfile
-    else:
+    else:  # pragma: no cover, this is the OOM fallback case
         return destfile.parent
 
 
@@ -374,28 +374,3 @@ def _get_list_of_measurements_from_influxdb_schema(api: QueryApi, bucket: str) -
         if len(row) == 1 and isinstance(row[0], str):
             measurements.append(row[0])
     return measurements
-
-
-def _count_samples(
-    api: QueryApi, bucket: str, filters: list[str], start: datetime, stop: datetime
-) -> dict[tuple[str, str], int]:
-    filter_string = " and ".join(filters)
-    query_str = textwrap.dedent(
-        f"""\
-        from (bucket: "{bucket}")
-            |> range(start: {start.isoformat()}, stop: {stop.isoformat()})
-            |> filter(fn: (r) => {filter_string})
-            |> keep(columns: ["_measurement", "_field", "_value"])
-            |> count()"""
-    )
-    log.debug(query_str)
-    response = api.query(query_str)
-
-    counts: dict[tuple[str, str], int] = {}
-    for row in response.to_values(["_measurement", "_field", "_value"]):
-        if len(row) != 3:
-            continue
-        measurement, field, count = row
-        if isinstance(measurement, str) and isinstance(field, str) and isinstance(count, int):
-            counts[(measurement, field)] = count
-    return counts

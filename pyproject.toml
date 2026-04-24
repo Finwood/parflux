@@ -55,6 +55,9 @@ markers = [
 [tool.coverage.run]
 branch = true
 source = ["parflux"]
+omit = [
+    "src/parflux/__main__.py",  # handled by smoke test
+]
 
 [tool.coverage.report]
 exclude_lines = [
