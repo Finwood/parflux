@@ -5,7 +5,8 @@ description = "Efficient InfluxDB data downloader and exporter"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "duckdb>=1.1.0",
+    "duckdb>=1.4; python_version < '3.14'",
+    "duckdb>=1.5; python_version >= '3.14'",
     "influxdb-client>=1.36.1",
     "python-dotenv>=1.0.0",
     "python-slugify>=8.0.1",
