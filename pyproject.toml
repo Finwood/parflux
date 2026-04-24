@@ -46,6 +46,7 @@ addopts = [
     "--strict-config",
     "--cov=parflux",
     "--cov-report=term-missing",
+    "--cov-report=html",
     "--cov-report=xml",
 ]
 markers = [
