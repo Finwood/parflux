@@ -7,6 +7,10 @@ on:
       - main
   workflow_dispatch:
 
+permissions:
+  contents: read
+  statuses: write
+
 jobs:
   unit:
     name: unit (py${{ matrix.python-version }})
@@ -39,6 +43,48 @@ jobs:
           name: coverage-xml
           path: coverage.xml
           if-no-files-found: error
+
+      - name: Publish HTML coverage to Smokeshow
+        if: matrix.python-version == '3.14'
+        continue-on-error: true
+        run: |
+          if [ -n "${SMOKESHOW_AUTH_KEY:-}" ]; then
+            uvx smokeshow upload htmlcov
+          else
+            echo "SMOKESHOW_AUTH_KEY not set; skipping Smokeshow upload."
+          fi
+        env:
+          SMOKESHOW_AUTH_KEY: ${{ secrets.SMOKESHOW_AUTH_KEY }}
+          SMOKESHOW_GITHUB_STATUS_DESCRIPTION: Coverage {coverage-percentage}
+          SMOKESHOW_GITHUB_COVERAGE_THRESHOLD: 90
+          SMOKESHOW_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SMOKESHOW_GITHUB_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
+  smoke:
+    name: smoke (wheel install + CLI)
+    runs-on: ubuntu-latest
+    needs: unit
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.14"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Build wheel
+        run: uv build --wheel
+
+      - name: Install wheel in fresh environment and run CLI smoke test
+        run: |
+          python -m venv .smoke-venv
+          source .smoke-venv/bin/activate
+          python -m pip install --upgrade pip
+          python -m pip install dist/*.whl
+          parflux --help
 
   integration:
     name: integration (live InfluxDB)

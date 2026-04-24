@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from parflux.core import BATCH_SIZE, get_influx_csv_schema, iter_batches, relation_name
+from parflux.core import DEFAULT_BATCH_SIZE, get_influx_csv_schema, iter_batches, relation_name
 
 
 class TestRelationName:
@@ -31,19 +31,19 @@ class TestIterBatches:
 
     def test_exact_multiple_of_batch_size(self):
         start = datetime(2024, 1, 1, tzinfo=UTC)
-        stop = start + 3 * BATCH_SIZE
+        stop = start + 3 * DEFAULT_BATCH_SIZE
         batches = list(iter_batches(start, stop))
         assert len(batches) == 3
-        assert batches[0] == (start, start + BATCH_SIZE)
-        assert batches[-1] == (start + 2 * BATCH_SIZE, stop)
+        assert batches[0] == (start, start + DEFAULT_BATCH_SIZE)
+        assert batches[-1] == (start + 2 * DEFAULT_BATCH_SIZE, stop)
 
     def test_trailing_partial_batch(self):
         start = datetime(2024, 1, 1, tzinfo=UTC)
-        stop = start + BATCH_SIZE + timedelta(hours=3)
+        stop = start + DEFAULT_BATCH_SIZE + timedelta(hours=3)
         batches = list(iter_batches(start, stop))
         assert len(batches) == 2
-        assert batches[0] == (start, start + BATCH_SIZE)
-        assert batches[1] == (start + BATCH_SIZE, stop)
+        assert batches[0] == (start, start + DEFAULT_BATCH_SIZE)
+        assert batches[1] == (start + DEFAULT_BATCH_SIZE, stop)
 
     def test_empty_when_start_equals_stop(self):
         start = datetime(2024, 1, 1, tzinfo=UTC)

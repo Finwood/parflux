@@ -1,4 +1,5 @@
 import csv
+import getpass
 import logging
 import shutil
 import subprocess
@@ -21,7 +22,7 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-BATCH_SIZE = timedelta(days=1)
+DEFAULT_BATCH_SIZE = timedelta(days=1)
 DIALECT = influxdb_client.Dialect(
     header=True,
     delimiter=",",
@@ -60,10 +61,12 @@ def get_influx_csv_schema(file: Path) -> dict[str, tuple[str, str]]:
     return {name: (dtype, INFLUX_TYPE_MAP[dtype]) for name, dtype in zip(column_names[1:], datatypes[1:])}
 
 
-def iter_batches(start: datetime, stop: datetime) -> Generator[tuple[datetime, datetime], None, None]:
+def iter_batches(
+    start: datetime, stop: datetime, batch_size: timedelta = DEFAULT_BATCH_SIZE
+) -> Generator[tuple[datetime, datetime], None, None]:
     batch_start = start
     while batch_start < stop:
-        batch_stop = min(batch_start + BATCH_SIZE, stop)
+        batch_stop = min(batch_start + batch_size, stop)
         yield batch_start, batch_stop
         batch_start = batch_stop
 
@@ -75,6 +78,68 @@ def list_measurements(db: InfluxDBClient, bucket: str) -> list[str]:
     return _get_list_of_measurements_from_influxdb_schema(api, bucket)
 
 
+def download(
+    queries: list[str],
+    *,
+    start: datetime,
+    stop: datetime,
+    basedir: Path,
+    filters: list[str],
+    batch_size: timedelta = DEFAULT_BATCH_SIZE,
+    overwrite: bool = False,
+) -> None:
+    db = InfluxDBClient.from_env_properties()
+    if not db.ping():
+        raise ConnectionError("InfluxDB seems unreachable, please check environment variables.")
+
+    start = start.astimezone()
+    stop = stop.astimezone()
+
+    with TemporaryDirectory(prefix=f"parflux-{getpass.getuser()}-", dir="/var/tmp") as tempdir_name:
+        tmp = Path(tempdir_name).resolve()
+        log.debug(f"session temporary directory: {tmp}")
+
+        for query in queries:
+            match query.split("/"):
+                case [bucket]:
+                    measurements = list_measurements(db, bucket)
+                    log.info(f"loading {len(measurements)} measurements from bucket '{bucket}'")
+                    for measurement in measurements:
+                        log.info(f"loading '{measurement}' from bucket '{bucket}'")
+                        try:
+                            download_measurement(
+                                db,
+                                bucket,
+                                measurement,
+                                basedir,
+                                start,
+                                stop,
+                                filters,
+                                tmp,
+                                batch_size=batch_size,
+                                overwrite=overwrite,
+                            )
+                        except Exception:
+                            log.exception(f"loading '{bucket}/{measurement}' in range [{start}, {stop}) failed:\n")
+                            continue
+                case [bucket, measurement]:
+                    log.info(f"loading '{measurement}' from bucket '{bucket}'")
+                    download_measurement(
+                        db,
+                        bucket,
+                        measurement,
+                        basedir,
+                        start,
+                        stop,
+                        filters,
+                        tmp,
+                        batch_size=batch_size,
+                        overwrite=overwrite,
+                    )
+                case _:
+                    log.warning(f"invalid query, skipping: '{query}'")
+
+
 def download_measurement(
     db: InfluxDBClient,
     bucket: str,
@@ -84,6 +149,7 @@ def download_measurement(
     stop: datetime,
     filters: list[str] = [],
     cache_dir: Optional[Path] = None,
+    batch_size: timedelta = DEFAULT_BATCH_SIZE,
     overwrite: bool = False,
 ) -> Path | None:
     start = start.astimezone()
@@ -99,7 +165,7 @@ def download_measurement(
     with TemporaryDirectory(prefix="pfx-get-", dir=cache_dir) as tempdir_name:
         tmp = Path(tempdir_name)
         assert tmp.exists() and tmp.is_dir() and not any(tmp.glob("*"))
-        for i, (bstart, bstop) in enumerate(iter_batches(start, stop)):
+        for i, (bstart, bstop) in enumerate(iter_batches(start, stop, batch_size=batch_size)):
             file = tmp / f"{destfile.stem}-{i:04d}.parquet"
 
             combined_filters = [f'r._measurement == "{measurement}"'] + filters
@@ -138,8 +204,8 @@ def download_measurement(
                     )
                     log.debug(query_str)
                     con.sql(query_str)
-            except duckdb.OutOfMemoryException:
-                log.warning(f"merging of {len(files)} parquet files failed with OOM, moving all files instead")
+            except duckdb.OutOfMemoryException:  # pragma: no cover
+                log.warning(f"merging {len(files)} parquet files failed with OOM, moving all files instead")
                 for src_file in files:
                     shutil.move(src_file, destfile.parent)
                 destfile.unlink()
@@ -149,10 +215,7 @@ def download_measurement(
         log.info(f'Measurement "{bucket}/{measurement}" downloaded to "{destfile}" ({dsize_MiB:.0f} MiB).')
 
         return destfile
-    else:
-        # dsize_MiB = sum(f.stat().st_size for f in destfile.parent.glob("*.parquet")) / 1024**2
-        # log.info(f'Measurement "{bucket}/{measurement}" downloaded to "{destfile}" ({dsize_MiB:.0f} MiB).')
-
+    else:  # pragma: no cover, this is the OOM fallback case
         return destfile.parent
 
 
@@ -311,28 +374,3 @@ def _get_list_of_measurements_from_influxdb_schema(api: QueryApi, bucket: str) -
         if len(row) == 1 and isinstance(row[0], str):
             measurements.append(row[0])
     return measurements
-
-
-def _count_samples(
-    api: QueryApi, bucket: str, filters: list[str], start: datetime, stop: datetime
-) -> dict[tuple[str, str], int]:
-    filter_string = " and ".join(filters)
-    query_str = textwrap.dedent(
-        f"""\
-        from (bucket: "{bucket}")
-            |> range(start: {start.isoformat()}, stop: {stop.isoformat()})
-            |> filter(fn: (r) => {filter_string})
-            |> keep(columns: ["_measurement", "_field", "_value"])
-            |> count()"""
-    )
-    log.debug(query_str)
-    response = api.query(query_str)
-
-    counts: dict[tuple[str, str], int] = {}
-    for row in response.to_values(["_measurement", "_field", "_value"]):
-        if len(row) != 3:
-            continue
-        measurement, field, count = row
-        if isinstance(measurement, str) and isinstance(field, str) and isinstance(count, int):
-            counts[(measurement, field)] = count
-    return counts
