@@ -113,3 +113,61 @@ A single opt-in integration test exercises an end-to-end download against a real
 ```bash
 PARFLUX_RUN_INTEGRATION=1 uv run pytest -m integration
 ```
+
+## Release
+
+Releases are tag-driven and automated through `.github/workflows/release.yml`.
+When a tag like `v0.2.0` is pushed, GitHub Actions will:
+- verify tag version (`v0.2.0` -> `0.2.0`) matches `[project].version` in `pyproject.toml`
+- build distributions with `uv build`
+- publish to PyPI with `uv publish`
+- create a GitHub Release and attach `dist/*`
+
+### Prerequisites
+
+- A `parflux` project exists on PyPI.
+- Configure one of the following for publishing authentication:
+  - **Preferred:** PyPI Trusted Publishing for this repository/workflow.
+  - **Fallback:** repository secret `UV_PUBLISH_TOKEN` with a PyPI API token.
+- GitHub Actions is enabled for the repository.
+
+### Create a new release
+
+1. Update version in `pyproject.toml`:
+
+   ```toml
+   [project]
+   version = "0.2.0"
+   ```
+
+2. Run checks locally:
+
+   ```bash
+   uv sync --group test
+   uv run pytest
+   uv build
+   ```
+
+3. Commit and push the version bump:
+
+   ```bash
+   git add pyproject.toml
+   git commit -m "chore: release 0.2.0"
+   git push
+   ```
+
+4. Create and push the release tag:
+
+   ```bash
+   git tag v0.2.0
+   git push origin v0.2.0
+   ```
+
+5. Monitor the `release` workflow in GitHub Actions and confirm:
+   - package is published on PyPI
+   - GitHub Release for `v0.2.0` is created
+
+### Version mismatch behavior
+
+If the tag and `pyproject.toml` version do not match, the workflow fails before publish.
+Fix by updating `pyproject.toml` or using the correct tag, then push a corrected tag.
