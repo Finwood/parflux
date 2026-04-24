@@ -8,7 +8,7 @@ import typer
 from rich.console import Console
 from rich.logging import RichHandler
 
-from .core import download
+from .core import DEFAULT_BATCH_SIZE, download
 
 app = typer.Typer(pretty_exceptions_show_locals=False, add_completion=False, no_args_is_help=True)
 console = Console()
@@ -16,6 +16,7 @@ log = logging.getLogger(__name__)
 
 locale.setlocale(locale.LC_ALL, "")
 DEFAULT_DURATION = timedelta(days=1)
+DEFAULT_BATCH_SIZE_HOURS = int(DEFAULT_BATCH_SIZE.total_seconds() // 3600)
 
 
 @app.command()
@@ -29,6 +30,10 @@ def main(
         typer.Option("--dest", "-d", help="target base directory, defaults to current directory", show_default=False),
     ] = None,
     filter: Annotated[list[str], typer.Option("--filter", "-f", help="additional flux filters")] = [],
+    batch_size: Annotated[
+        int,
+        typer.Option("--batch-size", help="query batch size in hours", min=1),
+    ] = DEFAULT_BATCH_SIZE_HOURS,
     start: Annotated[Optional[datetime], typer.Option("--start", help="start timestamp (inclusive)")] = None,
     stop: Annotated[Optional[datetime], typer.Option("--stop", help="stop timestamp (exclusive)")] = None,
     verbose: Annotated[int, typer.Option("--verbose", "-v", count=True)] = 0,
@@ -75,4 +80,11 @@ def main(
     else:
         start = start.astimezone()
 
-    download(queries=query, start=start, stop=stop, basedir=dest, filters=filter)
+    download(
+        queries=query,
+        start=start,
+        stop=stop,
+        basedir=dest,
+        filters=filter,
+        batch_size=timedelta(hours=batch_size),
+    )

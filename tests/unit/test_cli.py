@@ -4,6 +4,7 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from parflux.cli import app
+from parflux.core import DEFAULT_BATCH_SIZE
 
 runner = CliRunner()
 
@@ -22,6 +23,7 @@ def test_cli_applies_defaults_and_calls_download(mocker):
     assert kwargs["queries"] == ["bucket/cpu"]
     assert kwargs["basedir"] == Path(".")
     assert kwargs["filters"] == []
+    assert kwargs["batch_size"] == DEFAULT_BATCH_SIZE
     assert kwargs["stop"].microsecond == 0
     assert kwargs["stop"].tzinfo is not None
     assert kwargs["start"] == kwargs["stop"] - timedelta(days=1)
@@ -43,6 +45,7 @@ def test_cli_forwards_explicit_values(mocker, tmp_path):
             'r.host == "h1"',
             "--filter",
             "r.env =~ /prod/",
+            "--batch-size=6",
             "--start",
             start,
             "--stop",
@@ -55,6 +58,7 @@ def test_cli_forwards_explicit_values(mocker, tmp_path):
     assert kwargs["queries"] == ["bucket/cpu", "bucket/mem"]
     assert kwargs["basedir"] == tmp_path
     assert kwargs["filters"] == ['r.host == "h1"', "r.env =~ /prod/"]
+    assert kwargs["batch_size"] == timedelta(hours=6)
     assert kwargs["start"].year == 2024 and kwargs["start"].month == 1 and kwargs["start"].day == 1
     assert kwargs["stop"].year == 2024 and kwargs["stop"].month == 1 and kwargs["stop"].day == 2
     assert kwargs["start"].tzinfo is not None

@@ -114,3 +114,4 @@ class TestDownloadOrchestration:
         assert call.args[6] == ['r.site == "lab"']
         assert call.args[7].is_absolute()
         assert call.args[7].parent == Path("/var/tmp")
+        assert call.kwargs["batch_size"] == timedelta(days=1)

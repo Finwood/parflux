@@ -12,7 +12,7 @@ import duckdb
 import pytest
 from influxdb_client import InfluxDBClient
 
-from parflux.core import BATCH_SIZE, download_measurement
+from parflux.core import DEFAULT_BATCH_SIZE, download_measurement
 
 UTC = timezone.utc
 
@@ -87,7 +87,7 @@ class TestDownloadMeasurement:
         mocker.patch("parflux.core.query", side_effect=side_effect)
 
         start = datetime(2024, 1, 1, tzinfo=UTC)
-        stop = start + 3 * BATCH_SIZE
+        stop = start + 3 * DEFAULT_BATCH_SIZE
 
         result = download_measurement(mock_db, "mybucket", "cpu", tmp_path, start, stop)
 
