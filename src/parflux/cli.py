@@ -1,6 +1,6 @@
 import locale
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Annotated, Optional
 
@@ -8,13 +8,14 @@ import typer
 from rich.console import Console
 from rich.logging import RichHandler
 
-from .session import Session
+from .core import download
 
 app = typer.Typer(pretty_exceptions_show_locals=False, add_completion=False, no_args_is_help=True)
 console = Console()
 log = logging.getLogger(__name__)
 
 locale.setlocale(locale.LC_ALL, "")
+DEFAULT_DURATION = timedelta(days=1)
 
 
 @app.command()
@@ -28,8 +29,8 @@ def main(
         typer.Option("--dest", "-d", help="target base directory, defaults to current directory", show_default=False),
     ] = None,
     filter: Annotated[list[str], typer.Option("--filter", "-f", help="additional flux filters")] = [],
-    start: Optional[datetime] = None,
-    stop: Optional[datetime] = None,
+    start: Annotated[Optional[datetime], typer.Option("--start", help="start timestamp (inclusive)")] = None,
+    stop: Annotated[Optional[datetime], typer.Option("--stop", help="stop timestamp (exclusive)")] = None,
     verbose: Annotated[int, typer.Option("--verbose", "-v", count=True)] = 0,
     reload_env: Annotated[bool, typer.Option("--reload-env", "-r")] = False,
 ):
@@ -61,5 +62,17 @@ def main(
         handlers=[RichHandler()],
     )
 
-    session = Session(start, stop)
-    session.download(query, filter, dest)
+    if dest is None:
+        dest = Path(".")
+
+    if stop is None:
+        stop = datetime.now().replace(microsecond=0).astimezone()
+    else:
+        stop = stop.astimezone()
+
+    if start is None:
+        start = stop - DEFAULT_DURATION
+    else:
+        start = start.astimezone()
+
+    download(queries=query, start=start, stop=stop, basedir=dest, filters=filter)

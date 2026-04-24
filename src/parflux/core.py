@@ -1,4 +1,5 @@
 import csv
+import getpass
 import logging
 import shutil
 import subprocess
@@ -73,6 +74,49 @@ def list_measurements(db: InfluxDBClient, bucket: str) -> list[str]:
     api: QueryApi = db.query_api()
 
     return _get_list_of_measurements_from_influxdb_schema(api, bucket)
+
+
+def download(
+    queries: list[str],
+    *,
+    start: datetime,
+    stop: datetime,
+    basedir: Path,
+    filters: list[str],
+    overwrite: bool = False,
+) -> None:
+    db = InfluxDBClient.from_env_properties()
+    if not db.ping():
+        raise ConnectionError("InfluxDB seems unreachable, please check environment variables.")
+
+    start = start.astimezone()
+    stop = stop.astimezone()
+
+    with TemporaryDirectory(prefix=f"parflux-{getpass.getuser()}-", dir="/var/tmp") as tempdir_name:
+        tmp = Path(tempdir_name).resolve()
+        log.debug(f"session temporary directory: {tmp}")
+
+        for query in queries:
+            match query.split("/"):
+                case [bucket]:
+                    measurements = list_measurements(db, bucket)
+                    log.info(f"loading {len(measurements)} measurements from bucket '{bucket}'")
+                    for measurement in measurements:
+                        log.info(f"loading '{measurement}' from bucket '{bucket}'")
+                        try:
+                            download_measurement(
+                                db, bucket, measurement, basedir, start, stop, filters, tmp, overwrite=overwrite
+                            )
+                        except Exception:
+                            log.exception(f"loading '{bucket}/{measurement}' in range [{start}, {stop}) failed:\n")
+                            continue
+                case [bucket, measurement]:
+                    log.info(f"loading '{measurement}' from bucket '{bucket}'")
+                    download_measurement(
+                        db, bucket, measurement, basedir, start, stop, filters, tmp, overwrite=overwrite
+                    )
+                case _:
+                    log.warning(f"invalid query, skipping: '{query}'")
 
 
 def download_measurement(

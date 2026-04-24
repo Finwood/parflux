@@ -3,7 +3,7 @@
 import duckdb
 import pytest
 
-from parflux.session import Session
+from parflux.core import download
 
 pytestmark = pytest.mark.integration
 
@@ -11,8 +11,7 @@ pytestmark = pytest.mark.integration
 def test_download_bucket_roundtrip(influx_client, seeded_bucket, tmp_path):
     bucket_name, start, stop, expected_rows = seeded_bucket
 
-    session = Session(start, stop, db=influx_client)
-    session.download([bucket_name], basedir=tmp_path)
+    download([bucket_name], start=start, stop=stop, basedir=tmp_path, filters=[])
 
     parquet_file = tmp_path / bucket_name / "cpu.parquet"
     assert parquet_file.exists(), f"expected {parquet_file} to be created"
